@@ -42,7 +42,7 @@ flowchart LR
 ## 快速开始
 
 ```bash
-git clone https://github.com/<your-name>/docinsight-agent.git
+git clone https://github.com/YeYirp/docinsight-agent.git
 cd docinsight-agent
 ./mvnw spring-boot:run          # Windows: mvnw.cmd spring-boot:run
 ```
