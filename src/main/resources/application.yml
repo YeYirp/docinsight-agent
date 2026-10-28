@@ -1,0 +1,37 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: docinsight-agent
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+  mvc:
+    async:
+      request-timeout: 180000
+
+app:
+  ai:
+    base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
+    api-key: ${LLM_API_KEY:}
+    model: ${LLM_MODEL:deepseek-chat}
+    timeout-seconds: ${LLM_TIMEOUT_SECONDS:120}
+    max-tool-rounds: ${MAX_TOOL_ROUNDS:3}
+
+  embedding:
+    # 可选；不配置则只做关键词检索
+    base-url: ${EMBEDDING_BASE_URL:https://api.siliconflow.cn/v1}
+    api-key: ${EMBEDDING_API_KEY:}
+    model: ${EMBEDDING_MODEL:BAAI/bge-m3}
+
+  rag:
+    top-k: ${RAG_TOP_K:4}
+    max-chunk-size: ${RAG_CHUNK_SIZE:600}
+    chunk-overlap: ${RAG_CHUNK_OVERLAP:80}
+
+logging:
+  level:
+    root: INFO
+    com.example.docinsight: INFO

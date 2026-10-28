@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocInsight Agent</title>
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#fff; --ink:#1b2430; --sub:#66748a; --line:#e3e8f0;
+    --accent:#1f5fa8; --accent-soft:#eaf2fb; --ok:#1d7a5f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 "Microsoft YaHei","PingFang SC",system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
+  header{background:#fff;border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0}
+  .tag{font-size:12px;color:var(--sub)}
+  .spacer{flex:1}
+  .badge{font-size:12px;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+  main{flex:1;display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;padding:16px;overflow:hidden}
+  @media(max-width:900px){main{grid-template-columns:1fr;overflow:auto}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:0}
+  .panel h2{font-size:13px;margin:0;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--sub);font-weight:600}
+  .drop{margin:12px;border:1.5px dashed #c9d6e8;border-radius:10px;padding:16px;text-align:center;color:var(--sub);font-size:13px;cursor:pointer}
+  .drop:hover{border-color:var(--accent);color:var(--accent)}
+  .docs{overflow:auto;padding:0 12px 12px}
+  .doc{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px}
+  .doc b{display:block;font-size:13.5px;margin-bottom:2px;word-break:break-all}
+  .doc .meta{color:var(--sub);font-size:12px}
+  .doc button{border:0;background:none;color:#b04444;font-size:12px;cursor:pointer;padding:0;margin-top:4px}
+  .chat{display:flex;flex-direction:column;min-height:0}
+  .messages{flex:1;overflow:auto;padding:16px}
+  .msg{display:flex;gap:10px;margin-bottom:14px}
+  .who{flex:0 0 32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:#eef2f7;color:var(--sub)}
+  .msg.user .who{background:#e8f0fb;color:#2b5f9e}
+  .msg.ai .who{background:var(--accent-soft);color:var(--accent)}
+  .bubble{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 13px;white-space:pre-wrap;word-break:break-word;flex:1}
+  .msg.user .bubble{background:#f2f7ff;border-color:#dbe7f8}
+  .cites{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .cite{font-size:12px;border:1px solid #cfe0f0;background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:2px 8px;cursor:pointer}
+  .cite:hover{background:#dfeaf8}
+  .snippet{margin-top:6px;font-size:12.5px;color:var(--sub);background:#fafcff;border-left:3px solid #cfe0f0;padding:6px 10px;border-radius:0 6px 6px 0;display:none}
+  .snippet.show{display:block}
+  footer{border-top:1px solid var(--line);padding:10px 14px;background:#fff}
+  .composer{display:flex;gap:10px}
+  input[type=text]{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;outline:none}
+  input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,95,168,.12)}
+  button.primary{border:0;border-radius:10px;background:var(--accent);color:#fff;padding:0 18px;font:inherit;cursor:pointer}
+  button.primary:disabled{opacity:.5;cursor:not-allowed}
+  .stages{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px 42px}
+  .stage{font-size:12px;color:var(--sub);background:#fff;border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+  .stage.on{color:var(--accent);border-color:#cfe0f0;background:var(--accent-soft)}
+  .empty{color:var(--sub);text-align:center;padding:48px 20px;font-size:14px}
+  .toolbar{display:flex;gap:8px;align-items:center;padding:8px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)}
+  .toolbar button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>DocInsight Agent</h1>
+    <span class="tag">文档解析 · 混合检索 · 引用溯源 · 流式问答</span>
+    <span class="spacer"></span>
+    <span class="badge">{{ docs.length }} 篇文档 / {{ chunks }} 块</span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>知识库</h2>
+      <div class="drop" @click="$refs.file.click()">
+        点击上传 PDF / Word / MD<br><span style="font-size:12px">单文件 ≤ 50MB</span>
+      </div>
+      <input ref="file" type="file" accept=".pdf,.docx,.md,.txt" style="display:none" @change="upload">
+      <div class="docs">
+        <div v-for="d in docs" :key="d.id" class="doc">
+          <b>{{ d.name }}</b>
+          <span class="meta">{{ d.pages }} 页 · {{ d.chunks }} 块</span>
+          <br><button @click="remove(d.id)">删除</button>
+        </div>
+        <div v-if="docs.length===0" style="color:var(--sub);font-size:13px;text-align:center;padding:10px 0">
+          还没有文档，先上传一份试试
+        </div>
+      </div>
+    </section>
+
+    <section class="panel chat">
+      <h2>问答</h2>
+      <div class="messages">
+        <div v-if="messages.length===0" class="empty">
+          上传文档后提问，例如：<br>“备份多久做一次？”、“账号被锁定了怎么办？”
+        </div>
+        <div v-for="(m,i) in messages" :key="i" class="msg" :class="m.role">
+          <div class="who">{{ m.role==='user' ? '我' : 'AI' }}</div>
+          <div class="bubble">
+            {{ m.text }}
+            <div v-if="m.cites && m.cites.length" class="cites">
+              <span v-for="c in m.cites" :key="c.index" class="cite" @click="toggle(m, c.index)">
+                [{{ c.index }}] {{ c.docName }} · {{ c.location }}
+              </span>
+            </div>
+            <div v-for="c in m.cites" :key="'s'+c.index" class="snippet" :class="{show: m.open===c.index}">
+              <b>{{ c.heading || '正文' }}</b><br>{{ c.snippet }}
+            </div>
+          </div>
+        </div>
+        <div v-if="busy" class="stages">
+          <span v-for="(s,i) in stages" :key="i" class="stage" :class="{on:i===stages.length-1}">{{ s }}</span>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button @click="runEval">运行检索评测</button>
+        <span v-if="evalResult">Hit Rate@{{ evalResult.topK }}：{{ (evalResult.hitRate*100).toFixed(0) }}%（{{ evalResult.hits }}/{{ evalResult.cases }}）</span>
+        <span v-else>评测集基于内置示例问题</span>
+      </div>
+      <footer>
+        <div class="composer">
+          <input type="text" v-model="question" placeholder="输入问题，回车发送" :disabled="busy" @keyup.enter="ask">
+          <button class="primary" :disabled="busy || !question.trim()" @click="ask">{{ busy ? '生成中' : '提问' }}</button>
+        </div>
+      </footer>
+    </section>
+  </main>
+</div>
+
+<script src="/vendor/vue.global.prod.js"></script>
+<script>
+const { createApp } = Vue;
+createApp({
+  data() {
+    return { docs: [], chunks: 0, messages: [], question: '', busy: false, stages: [], evalResult: null };
+  },
+  mounted() { this.loadDocs(); },
+  methods: {
+    async loadDocs() {
+      const res = await fetch('/api/docs');
+      this.docs = await res.json();
+      this.chunks = this.docs.reduce((sum, d) => sum + d.chunks, 0);
+    },
+    async upload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/docs/upload', { method: 'POST', body: form });
+      if (!res.ok) { alert('上传失败：' + await res.text()); return; }
+      e.target.value = '';
+      await this.loadDocs();
+    },
+    async remove(id) {
+      if (!confirm('确定删除这份文档？')) return;
+      await fetch('/api/docs/' + id, { method: 'DELETE' });
+      await this.loadDocs();
+    },
+    async runEval() {
+      const res = await fetch('/api/eval?topK=3');
+      this.evalResult = await res.json();
+    },
+    toggle(m, index) { m.open = m.open === index ? null : index; },
+    async ask() {
+      const q = this.question.trim();
+      if (!q || this.busy) return;
+      this.question = '';
+      this.busy = true;
+      this.stages = [];
+      this.messages.push({ role: 'user', text: q });
+      const ai = { role: 'ai', text: '', cites: [], open: null };
+      this.messages.push(ai);
+
+      try {
+        const res = await fetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q })
+        });
+        if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf('\n\n')) >= 0) {
+            const frame = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            this.handle(frame, ai);
+          }
+        }
+      } catch (err) {
+        ai.text = ai.text || ('请求失败：' + err.message);
+      } finally {
+        this.busy = false;
+        this.stages = [];
+      }
+    },
+    handle(frame, ai) {
+      let event = 'message', data = '';
+      frame.split('\n').forEach(line => {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += line.slice(5).trim();
+      });
+      if (!data) return;
+      let payload;
+      try { payload = JSON.parse(data); } catch { return; }
+      if (event === 'stage') this.stages.push(payload.name);
+      else if (event === 'sources') ai.cites = payload;
+      else if (event === 'delta') ai.text += payload.text;
+      else if (event === 'error') ai.text = ai.text || payload.message;
+    }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
