@@ -96,8 +96,13 @@ public class AgentService {
         long started = System.currentTimeMillis();
         metrics.request();
         try {
-            if (store.totalChunks() == 0) {
-                send(emitter, "error", Map.of("message", "还没有上传文档，请先上传 PDF / Word / Markdown"));
+            Set<String> scopedDocIds = scopedDocumentIds(input);
+            List<Chunk> scopedChunks = store.chunksForDocuments(scopedDocIds);
+            if (scopedChunks.isEmpty()) {
+                String message = scopedDocIds == null
+                        ? "还没有上传文档，请先创建知识库并添加 PDF / Word / Markdown"
+                        : "所选知识库还没有可检索的文档，请先添加文档";
+                send(emitter, "error", Map.of("message", message));
                 emitter.complete();
                 return;
             }
@@ -106,8 +111,8 @@ public class AgentService {
             Set<String> keywords = keywords(input.question());
 
             stage(emitter, "检索文档", "混合检索：向量 + 关键词");
-            List<RetrievalService.Hit> hits = retrieval.search(
-                    input.question(), keywords, input.docId(), props.rag().topK());
+            List<RetrievalService.Hit> hits = retrieval.searchInDocuments(
+                    input.question(), keywords, scopedDocIds, props.rag().topK());
 
             List<Map<String, Object>> sources = new ArrayList<>();
             for (int i = 0; i < hits.size(); i++) {
@@ -145,6 +150,16 @@ public class AgentService {
         return props.llmEnabled()
                 && chatModelProvider.getIfAvailable() != null
                 && streamingProvider.getIfAvailable() != null;
+    }
+
+    private Set<String> scopedDocumentIds(AskInput input) {
+        if (input.docId() != null && !input.docId().isBlank()) {
+            return Set.of(input.docId());
+        }
+        if (input.knowledgeBaseIds() != null && !input.knowledgeBaseIds().isEmpty()) {
+            return store.documentIdsForKnowledgeBases(input.knowledgeBaseIds());
+        }
+        return null;
     }
 
     private String llmAnswer(String question, List<RetrievalService.Hit> hits, SseEmitter emitter)

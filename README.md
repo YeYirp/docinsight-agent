@@ -18,6 +18,8 @@
 - **引用溯源**：回答强制关联原文 Chunk，前端点开即看片段与位置，可核对。
 - **工具调用**：文档里没有答案时可调用联网搜索工具，限制最大轮次，超限禁用工具强制总结。
 - **流式交互**：SSE 推送阶段进度与增量文本，同时记录耗时与 Token。
+- **知识库工作区**：左侧只有「新对话」「知识库」两个主模块；知识库支持新建、添加/删除文档，
+  提问时可以选择一个或多个知识库作为检索范围。
 - **检索评测**：内置评测集，`/api/eval` 直接返回 Hit Rate@K，便于调参。
 
 ## 架构
@@ -47,7 +49,17 @@ cd docinsight-agent
 ./mvnw spring-boot:run          # Windows: mvnw.cmd spring-boot:run
 ```
 
-打开 http://localhost:8080 ，上传 `sample/示例产品手册.md`，然后提问「备份多久做一次？」。
+项目需要 Java 21。Windows PowerShell 也可以直接运行：
+
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+打开 http://127.0.0.1:8080 ，默认进入「新对话」；在「知识库」中新建知识库、
+上传 `sample/示例产品手册.md` 后，即可在对话中勾选知识库并提问。
+
+> **数据保存位置：** 当前版本的知识库元数据、上传文档、切片和向量都保存在 Java 进程内存中，
+> 不写入项目目录或数据库。关闭/重启服务后这些数据会全部清空，需要重新创建和上传。
 
 **不配置任何 Key 也能跑**：此时使用抽取式回答（直接摘录检索到的原文），
 检索、引用、SSE、评测全部可用，适合先看效果。
@@ -84,13 +96,29 @@ $env:EMBEDDING_API_KEY="sk-xxx"
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| `GET` | `/api/knowledge-bases` | 知识库列表 |
+| `POST` | `/api/knowledge-bases` | 新建知识库，JSON 字段：`name`、`description` |
+| `GET` | `/api/knowledge-bases/{id}` | 知识库详情 |
+| `DELETE` | `/api/knowledge-bases/{id}` | 删除知识库及其文档 |
+| `GET` | `/api/knowledge-bases/{id}/documents` | 知识库文档列表 |
+| `POST` | `/api/knowledge-bases/{id}/documents` | 向知识库上传文档（multipart，字段名 `file`） |
 | `POST` | `/api/docs/upload` | 上传 PDF / DOCX / MD / TXT（multipart，字段名 `file`） |
 | `GET` | `/api/docs` | 文档列表 |
 | `DELETE` | `/api/docs/{id}` | 删除文档及其索引 |
-| `POST` | `/api/ask` | SSE 问答，事件：`stage` / `sources` / `delta` / `done` / `error` |
+| `POST` | `/api/ask` | SSE 问答；可传 `knowledgeBaseIds` 数组选择多个知识库 |
 | `GET` | `/api/eval?topK=3` | 检索评测，返回 Hit Rate 与逐题明细 |
 | `GET` | `/api/health` | 健康检查 |
 | `GET` | `/api/metrics` | 请求数、Token、平均耗时 |
+
+限定知识库范围的提问请求示例：
+
+```json
+{
+  "question": "备份多久做一次？",
+  "sessionId": "demo-session",
+  "knowledgeBaseIds": ["知识库-id-1", "知识库-id-2"]
+}
+```
 
 `sources` 事件示例：
 
@@ -120,12 +148,13 @@ curl "http://localhost:8080/api/eval?topK=3"
 src/main/java/com/example/docinsight
 ├── DocInsightApplication.java
 ├── config/           AiProperties、AiConfig（同步模型 + 流式模型）
-├── controller/       DocumentController、ChatController
-├── model/            Chunk、DocumentInfo、AskInput
+├── controller/       KnowledgeBaseController、DocumentController、ChatController
+├── model/            KnowledgeBase、Chunk、DocumentInfo、AskInput
 └── service/
     ├── DocumentParser    PDF/Word/文本 → 块（含标题层级、页码）
     ├── Chunker           按标题切 Chunk（含重叠）
-    ├── DocumentStore     内存文档库
+    ├── DocumentStore     内存知识库、文档、切片与向量存储
+    ├── DocumentIngestionService  上传解析、切分与入库
     ├── EmbeddingClient   向量化（可选）
     ├── RetrievalService  混合检索与融合
     ├── Tools             Function Calling 工具
@@ -152,7 +181,8 @@ src/main/java/com/example/docinsight
 ## 隐私说明
 
 - 仓库内**不包含任何 API Key**，全部通过环境变量注入，`.env` 已被 `.gitignore` 排除。
-- 上传的文档只存在内存中，重启即清空，不会落盘、不会外传（除非你配置了外部 Embedding 服务）。
+- 知识库、上传的文档、切片与向量只存在内存中，重启即清空，不会落盘、不会外传
+  （除非你配置了外部 Embedding 服务）。
 - 示例文档为虚构内容，不含真实企业信息。
 
 ## License

@@ -47,4 +47,27 @@ class RetrievalServiceTest {
         assertThat(RetrievalService.keywordScore(Set.of("备份"), "备份备份备份")).isEqualTo(1.0);
         assertThat(RetrievalService.keywordScore(Set.of(), "任意")).isZero();
     }
+
+    @Test
+    void scopedSearchOnlyUsesSelectedDocuments() {
+        DocumentStore store = new DocumentStore();
+        String kb1 = store.createKnowledgeBase("运维", "运维资料").id();
+        String kb2 = store.createKnowledgeBase("账号", "账号资料").id();
+        store.save(new DocumentInfo("d1", "ops.md", kb1, 1, 1, 100),
+                List.of(new Chunk("d1#0", "d1", "ops.md", "备份策略", "每日执行全量备份", "第 1 行", null)));
+        store.save(new DocumentInfo("d2", "account.md", kb2, 1, 1, 100),
+                List.of(new Chunk("d2#0", "d2", "account.md", "账号锁定", "账号锁定三十分钟", "第 2 行", null)));
+
+        EmbeddingClient embedding = mock(EmbeddingClient.class);
+        when(embedding.enabled()).thenReturn(false);
+        RetrievalService service = new RetrievalService(store, embedding, props);
+
+        List<RetrievalService.Hit> onlyOps = service.searchInDocuments(
+                "备份和账号", Set.of("备份", "账号"), Set.of("d1"), 4);
+        List<RetrievalService.Hit> both = service.searchInDocuments(
+                "备份和账号", Set.of("备份", "账号"), Set.of("d1", "d2"), 4);
+
+        assertThat(onlyOps).extracting(hit -> hit.chunk().docId()).containsOnly("d1");
+        assertThat(both).extracting(hit -> hit.chunk().docId()).containsExactlyInAnyOrder("d1", "d2");
+    }
 }

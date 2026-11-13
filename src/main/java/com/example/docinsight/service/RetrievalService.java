@@ -7,9 +7,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 混合检索：向量相似度 0.6 + 关键词 0.25 + 标题命中 0.15。
@@ -27,8 +29,8 @@ public class RetrievalService {
     private final EmbeddingClient embeddingClient;
     private final AiProperties props;
 
+    private final Set<String> vectorAttempted = ConcurrentHashMap.newKeySet();
     private volatile boolean vectorReady;
-    private volatile boolean vectorTried;
 
     public RetrievalService(DocumentStore store, EmbeddingClient embeddingClient, AiProperties props) {
         this.store = store;
@@ -37,12 +39,18 @@ public class RetrievalService {
     }
 
     public List<Hit> search(String question, Set<String> keywords, String docId, int topK) {
-        List<Chunk> chunks = store.chunks(docId);
+        Set<String> scopedDocIds = docId == null || docId.isBlank() ? null : Set.of(docId);
+        return searchInDocuments(question, keywords, scopedDocIds, topK);
+    }
+
+    public List<Hit> searchInDocuments(String question, Set<String> keywords,
+                                       Collection<String> docIds, int topK) {
+        List<Chunk> chunks = store.chunksForDocuments(docIds);
         if (chunks.isEmpty()) {
             return List.of();
         }
         ensureVectors(chunks);
-        chunks = store.chunks(docId);
+        chunks = store.chunksForDocuments(docIds);
 
         double[] queryVector = vectorReady ? embedOne(question) : null;
         boolean semanticUsed = queryVector != null;
@@ -65,20 +73,24 @@ public class RetrievalService {
 
     /** 只向量化一次；失败后不再重试，避免每个请求都打一次外部接口。 */
     private void ensureVectors(List<Chunk> chunks) {
-        if (vectorTried || !embeddingClient.enabled()) {
+        if (!embeddingClient.enabled()) {
             return;
         }
         synchronized (this) {
-            if (vectorTried) {
+            List<Chunk> pending = chunks.stream()
+                    .filter(chunk -> chunk.vector() == null)
+                    .filter(chunk -> !vectorAttempted.contains(chunk.id()))
+                    .toList();
+            if (pending.isEmpty()) {
                 return;
             }
-            vectorTried = true;
+            pending.forEach(chunk -> vectorAttempted.add(chunk.id()));
             List<double[]> vectors = embeddingClient.embed(
-                    chunks.stream().map(Chunk::text).toList());
-            if (vectors != null) {
-                List<Chunk> withVectors = new ArrayList<>(chunks.size());
-                for (int i = 0; i < chunks.size(); i++) {
-                    withVectors.add(chunks.get(i).withVector(vectors.get(i)));
+                    pending.stream().map(Chunk::text).toList());
+            if (vectors != null && vectors.size() == pending.size()) {
+                List<Chunk> withVectors = new ArrayList<>(pending.size());
+                for (int i = 0; i < pending.size(); i++) {
+                    withVectors.add(pending.get(i).withVector(vectors.get(i)));
                 }
                 store.updateVectors(withVectors);
                 vectorReady = true;
