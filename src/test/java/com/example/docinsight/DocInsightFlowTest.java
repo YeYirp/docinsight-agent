@@ -20,7 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 不需要任何外部服务（没有 key 时走抽取式回答）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"app.ai.api-key=", "app.embedding.api-key="})
+        properties = {
+                "app.ai.api-key=",
+                "app.embedding.api-key=",
+                "spring.datasource.url=jdbc:sqlite:target/test-data/docinsight-flow.db"
+        })
 class DocInsightFlowTest {
 
     @LocalServerPort

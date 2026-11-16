@@ -68,9 +68,18 @@ public class EmbeddingClient {
             List<double[]> vectors = new ArrayList<>(data.size());
             for (JsonNode item : data) {
                 JsonNode embedding = item.get("embedding");
+                if (embedding == null || !embedding.isArray()) {
+                    log.warn("embedding_response_missing_vector");
+                    return null;
+                }
                 double[] vector = new double[embedding.size()];
                 for (int i = 0; i < embedding.size(); i++) {
                     vector[i] = embedding.get(i).asDouble();
+                }
+                if (!validDimension(vector)) {
+                    log.warn("embedding_dimension_mismatch expected={} actual={}",
+                            props.embedding().dimension(), vector.length);
+                    return null;
                 }
                 vectors.add(vector);
             }
@@ -83,5 +92,17 @@ public class EmbeddingClient {
 
     private String strip(String url) {
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    private boolean validDimension(double[] vector) {
+        if (vector.length != props.embedding().dimension()) {
+            return false;
+        }
+        for (double value : vector) {
+            if (!Double.isFinite(value)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

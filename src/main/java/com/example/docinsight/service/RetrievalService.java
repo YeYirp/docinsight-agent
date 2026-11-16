@@ -9,13 +9,14 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 混合检索：向量相似度 0.6 + 关键词 0.25 + 标题命中 0.15。
- * 向量不可用时自动退化为 关键词 0.7 + 标题 0.3。
+ * 混合检索：vec0 向量召回 + SQLite FTS5 关键词召回，最后按既有权重融合。
+ * SQL 负责筛选和召回，不再把整库切片加载到 Java 内存逐条打分。
  */
 @Service
 public class RetrievalService {
@@ -28,9 +29,6 @@ public class RetrievalService {
     private final DocumentStore store;
     private final EmbeddingClient embeddingClient;
     private final AiProperties props;
-
-    private final Set<String> vectorAttempted = ConcurrentHashMap.newKeySet();
-    private volatile boolean vectorReady;
 
     public RetrievalService(DocumentStore store, EmbeddingClient embeddingClient, AiProperties props) {
         this.store = store;
@@ -45,112 +43,80 @@ public class RetrievalService {
 
     public List<Hit> searchInDocuments(String question, Set<String> keywords,
                                        Collection<String> docIds, int topK) {
-        List<Chunk> chunks = store.chunksForDocuments(docIds);
-        if (chunks.isEmpty()) {
+        if (!store.hasChunks(docIds)) {
             return List.of();
         }
-        ensureVectors(chunks);
-        chunks = store.chunksForDocuments(docIds);
 
-        double[] queryVector = vectorReady ? embedOne(question) : null;
-        boolean semanticUsed = queryVector != null;
+        int limit = Math.max(20, Math.max(1, topK) * 5);
+        List<DocumentStore.VectorCandidate> vectorHits = List.of();
+        if (embeddingClient.enabled()) {
+            ensureVectors(docIds);
+            double[] queryVector = embedOne(question);
+            if (queryVector != null) {
+                vectorHits = store.vectorCandidates(queryVector, docIds, limit);
+            }
+        }
+        List<DocumentStore.KeywordCandidate> keywordHits =
+                store.keywordCandidates(keywords, docIds, limit);
+
+        boolean semanticUsed = !vectorHits.isEmpty();
+        Map<String, Chunk> chunks = new HashMap<>();
+        Map<String, Double> semanticScores = new HashMap<>();
+        Map<String, Double> keywordScores = new HashMap<>();
+        Map<String, Double> headingScores = new HashMap<>();
+
+        for (DocumentStore.VectorCandidate hit : vectorHits) {
+            Chunk chunk = hit.chunk();
+            chunks.putIfAbsent(chunk.id(), chunk);
+            double similarity = Math.max(0, Math.min(1, 1.0 - hit.distance()));
+            semanticScores.merge(chunk.id(), similarity, Math::max);
+        }
+        for (DocumentStore.KeywordCandidate hit : keywordHits) {
+            Chunk chunk = hit.chunk();
+            chunks.putIfAbsent(chunk.id(), chunk);
+            keywordScores.merge(chunk.id(), hit.keywordScore(), Math::max);
+            headingScores.merge(chunk.id(), hit.headingScore(), Math::max);
+        }
 
         List<Hit> hits = new ArrayList<>(chunks.size());
-        for (Chunk chunk : chunks) {
-            double semantic = semanticUsed ? cosine(queryVector, chunk.vector()) : 0;
-            double keyword = keywordScore(keywords, chunk.text());
-            double heading = headingScore(keywords, chunk.heading());
+        for (Chunk chunk : chunks.values()) {
+            double semantic = semanticScores.getOrDefault(chunk.id(), 0.0);
+            double keyword = keywordScores.getOrDefault(chunk.id(), 0.0);
+            double heading = headingScores.getOrDefault(chunk.id(), 0.0);
             double score = semanticUsed
                     ? semantic * 0.6 + keyword * 0.25 + heading * 0.15
                     : keyword * 0.7 + heading * 0.3;
             hits.add(new Hit(chunk, score, semanticUsed));
         }
         return hits.stream()
-                .sorted(Comparator.comparingDouble(Hit::score).reversed())
+                .sorted(Comparator.comparingDouble(Hit::score).reversed()
+                        .thenComparing(hit -> hit.chunk().id()))
                 .limit(Math.max(1, topK))
                 .toList();
     }
 
-    /** 只向量化一次；失败后不再重试，避免每个请求都打一次外部接口。 */
-    private void ensureVectors(List<Chunk> chunks) {
-        if (!embeddingClient.enabled()) {
+    /** 缺失向量从 SQL 查询出来并写回 chunk_vector；进程内不保留任何向量缓存。 */
+    private void ensureVectors(Collection<String> docIds) {
+        List<Chunk> pending = store.chunksWithoutVectors(docIds);
+        if (pending.isEmpty()) {
             return;
         }
-        synchronized (this) {
-            List<Chunk> pending = chunks.stream()
-                    .filter(chunk -> chunk.vector() == null)
-                    .filter(chunk -> !vectorAttempted.contains(chunk.id()))
-                    .toList();
-            if (pending.isEmpty()) {
-                return;
-            }
-            pending.forEach(chunk -> vectorAttempted.add(chunk.id()));
-            List<double[]> vectors = embeddingClient.embed(
-                    pending.stream().map(Chunk::text).toList());
-            if (vectors != null && vectors.size() == pending.size()) {
-                List<Chunk> withVectors = new ArrayList<>(pending.size());
-                for (int i = 0; i < pending.size(); i++) {
-                    withVectors.add(pending.get(i).withVector(vectors.get(i)));
-                }
-                store.updateVectors(withVectors);
-                vectorReady = true;
-                log.info("vector_index_ready chunks={}", withVectors.size());
-            } else {
-                log.warn("vector_index_failed fallback=keyword_only");
-            }
+        List<double[]> vectors = embeddingClient.embed(
+                pending.stream().map(Chunk::text).toList());
+        if (vectors == null || vectors.size() != pending.size()) {
+            log.warn("vector_index_failed chunks={} fallback=keyword_only", pending.size());
+            return;
         }
+        List<Chunk> withVectors = new ArrayList<>(pending.size());
+        for (int index = 0; index < pending.size(); index++) {
+            withVectors.add(pending.get(index).withVector(vectors.get(index)));
+        }
+        store.updateVectors(withVectors);
+        log.info("vector_index_ready chunks={}", withVectors.size());
     }
 
     private double[] embedOne(String question) {
         List<double[]> vectors = embeddingClient.embed(List.of(question));
         return vectors == null || vectors.isEmpty() ? null : vectors.get(0);
-    }
-
-    static double cosine(double[] a, double[] b) {
-        if (a == null || b == null || a.length != b.length) {
-            return 0;
-        }
-        double dot = 0, na = 0, nb = 0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            na += a[i] * a[i];
-            nb += b[i] * b[i];
-        }
-        return (na == 0 || nb == 0) ? 0 : Math.max(0, dot / (Math.sqrt(na) * Math.sqrt(nb)));
-    }
-
-    static double keywordScore(Set<String> keywords, String text) {
-        if (keywords == null || keywords.isEmpty() || text == null) {
-            return 0;
-        }
-        String lower = text.toLowerCase();
-        // 按出现次数加权：命中 1 次记 1，2 次及以上记 2，避免"提了一句"和"整节都在讲"同分
-        double hit = 0;
-        for (String keyword : keywords) {
-            String k = keyword.toLowerCase();
-            if (k.isBlank()) {
-                continue;
-            }
-            int count = 0;
-            int from = 0;
-            while (count < 2) {
-                int index = lower.indexOf(k, from);
-                if (index < 0) {
-                    break;
-                }
-                count++;
-                from = index + k.length();
-            }
-            hit += count;
-        }
-        return Math.min(1.0, hit / (keywords.size() * 2.0));
-    }
-
-    private static double headingScore(Set<String> keywords, String heading) {
-        if (keywords == null || heading == null || heading.isBlank()) {
-            return 0;
-        }
-        String lower = heading.toLowerCase();
-        return keywords.stream().anyMatch(k -> lower.contains(k.toLowerCase())) ? 1.0 : 0.0;
     }
 }

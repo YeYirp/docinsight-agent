@@ -15,6 +15,8 @@
   避免知识点被截断。
 - **混合检索**：BGE-M3 向量召回 + 关键词召回，按 0.6 / 0.25 / 0.15 加权融合；
   向量服务不可用时自动降级为纯关键词。
+- **本地持久化**：SQLite 单文件保存知识库、文档、切片与向量；关键词使用 FTS5，
+  向量检索使用随应用打包的 `sqlite-vec`，无需另装数据库或扩展。
 - **引用溯源**：回答强制关联原文 Chunk，前端点开即看片段与位置，可核对。
 - **工具调用**：文档里没有答案时可调用联网搜索工具，限制最大轮次，超限禁用工具强制总结。
 - **流式交互**：SSE 推送阶段进度与增量文本，同时记录耗时与 Token。
@@ -29,10 +31,11 @@ flowchart LR
     U[浏览器] -->|上传| D[DocumentController]
     D --> P[DocumentParser]
     P --> C[Chunker]
-    C --> S[(DocumentStore)]
+    C --> S[(SQLite)]
     U -->|提问 SSE| A[AgentService]
     A --> R[RetrievalService]
     R --> S
+    S --> V[(sqlite-vec / FTS5)]
     R --> E[EmbeddingClient]
     A -->|Function Calling| T[Tools]
     A --> L[LLM]
@@ -58,8 +61,14 @@ cd docinsight-agent
 打开 http://127.0.0.1:8080 ，默认进入「新对话」；在「知识库」中新建知识库、
 上传 `sample/示例产品手册.md` 后，即可在对话中勾选知识库并提问。
 
-> **数据保存位置：** 当前版本的知识库元数据、上传文档、切片和向量都保存在 Java 进程内存中，
-> 不写入项目目录或数据库。关闭/重启服务后这些数据会全部清空，需要重新创建和上传。
+> **数据保存位置：** 所有知识库元数据、文档、切片、FTS5 索引和向量都保存在
+> `./data/docinsight.db`。首次启动会自动创建 `data` 目录、SQLite 表和 vec0 扩展。
+> 重启不会丢失数据；删除整个软件目录时，`data` 也会一起删除。
+
+`vec0.dll`（sqlite-vec 0.1.9 Windows x64）已放在
+`src/main/resources/native/windows-x86_64/` 并会打包进应用。程序启动时将其释放到
+`./data/native/windows-x86_64/`，每条 SQLite JDBC 连接都会自动执行
+`load_extension(...)`，用户无需手工注册扩展。
 
 **不配置任何 Key 也能跑**：此时使用抽取式回答（直接摘录检索到的原文），
 检索、引用、SSE、评测全部可用，适合先看效果。
@@ -90,6 +99,9 @@ $env:EMBEDDING_API_KEY="sk-xxx"
 | `EMBEDDING_API_KEY` | 空 | 不填则只做关键词检索 |
 | `EMBEDDING_BASE_URL` | `https://api.siliconflow.cn/v1` | Embedding 服务地址 |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | 向量模型 |
+| `EMBEDDING_DIMENSION` | `1024` | 向量维度，必须与 `chunk_vector` 表一致 |
+| `DATABASE_URL` | `jdbc:sqlite:./data/docinsight.db` | SQLite 数据文件 |
+| `SQLITE_VEC_EXTENSION` | 空 | 可选：使用外部 vec0 扩展路径 |
 | `RAG_TOP_K` | `4` | 检索返回块数 |
 
 ## API
@@ -147,13 +159,13 @@ curl "http://localhost:8080/api/eval?topK=3"
 ```
 src/main/java/com/example/docinsight
 ├── DocInsightApplication.java
-├── config/           AiProperties、AiConfig（同步模型 + 流式模型）
+├── config/           AiProperties、AiConfig、SQLite/vec0 初始化
 ├── controller/       KnowledgeBaseController、DocumentController、ChatController
 ├── model/            KnowledgeBase、Chunk、DocumentInfo、AskInput
 └── service/
     ├── DocumentParser    PDF/Word/文本 → 块（含标题层级、页码）
     ├── Chunker           按标题切 Chunk（含重叠）
-    ├── DocumentStore     内存知识库、文档、切片与向量存储
+    ├── DocumentStore     SQLite CRUD、FTS5 与 vec0 向量读写
     ├── DocumentIngestionService  上传解析、切分与入库
     ├── EmbeddingClient   向量化（可选）
     ├── RetrievalService  混合检索与融合
@@ -181,8 +193,9 @@ src/main/java/com/example/docinsight
 ## 隐私说明
 
 - 仓库内**不包含任何 API Key**，全部通过环境变量注入，`.env` 已被 `.gitignore` 排除。
-- 知识库、上传的文档、切片与向量只存在内存中，重启即清空，不会落盘、不会外传
-  （除非你配置了外部 Embedding 服务）。
+- 知识库、上传的文档、切片、FTS5 索引与向量保存在本地
+  `./data/docinsight.db`，不会上传到外部服务（Embedding 文档文本除外）。
+- `data/` 已加入 `.gitignore`。备份时复制整个 `data` 目录即可。
 - 示例文档为虚构内容，不含真实企业信息。
 
 ## License

@@ -13,7 +13,7 @@ class DocumentPipelineTest {
 
     private final AiProperties props = new AiProperties(
             new AiProperties.Ai("http://localhost", "", "test", 30, 3),
-            new AiProperties.Embedding("http://localhost", "", "bge"),
+            new AiProperties.Embedding("http://localhost", "", "bge", 1024),
             new AiProperties.Rag(4, 200, 40));
 
     private static final String SAMPLE = """

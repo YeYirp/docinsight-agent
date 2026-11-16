@@ -8,7 +8,7 @@ public record AiProperties(Ai ai, Embedding embedding, Rag rag) {
     public record Ai(String baseUrl, String apiKey, String model, int timeoutSeconds, int maxToolRounds) {
     }
 
-    public record Embedding(String baseUrl, String apiKey, String model) {
+    public record Embedding(String baseUrl, String apiKey, String model, int dimension) {
         public boolean enabled() {
             return apiKey != null && !apiKey.isBlank();
         }

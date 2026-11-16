@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: docinsight-agent
+  datasource:
+    url: ${DATABASE_URL:jdbc:sqlite:./data/docinsight.db}
+    driver-class-name: org.sqlite.JDBC
   servlet:
     multipart:
       max-file-size: 50MB
@@ -25,6 +28,10 @@ app:
     base-url: ${EMBEDDING_BASE_URL:https://api.siliconflow.cn/v1}
     api-key: ${EMBEDDING_API_KEY:}
     model: ${EMBEDDING_MODEL:BAAI/bge-m3}
+    dimension: ${EMBEDDING_DIMENSION:1024}
+
+  database:
+    vec-extension: ${SQLITE_VEC_EXTENSION:}
 
   rag:
     top-k: ${RAG_TOP_K:4}

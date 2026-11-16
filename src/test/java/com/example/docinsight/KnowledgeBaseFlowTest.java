@@ -16,7 +16,11 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"app.ai.api-key=", "app.embedding.api-key="})
+        properties = {
+                "app.ai.api-key=",
+                "app.embedding.api-key=",
+                "spring.datasource.url=jdbc:sqlite:target/test-data/knowledge-base-flow.db"
+        })
 class KnowledgeBaseFlowTest {
 
     @LocalServerPort
