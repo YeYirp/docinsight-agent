@@ -20,8 +20,27 @@ public final class SqliteSchema {
         ResourceDatabasePopulator populator = new ResourceDatabasePopulator(
                 new ClassPathResource("schema.sql"));
         populator.execute(dataSource);
+        ensureDocumentCreatedAt(jdbc);
         initializeFtsTriggers(jdbc);
         initializeVectorTable(jdbc, vectorDimension);
+    }
+
+    /** 兼容旧版本数据库：document 表早期没有上传时间字段。 */
+    private static void ensureDocumentCreatedAt(JdbcTemplate jdbc) {
+        List<String> columns = jdbc.queryForList(
+                "SELECT name FROM pragma_table_info('document')", String.class);
+        if (!columns.contains("created_at")) {
+            jdbc.execute("ALTER TABLE document ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
+        }
+        jdbc.update("""
+                UPDATE document
+                SET created_at = COALESCE(
+                    (SELECT kb.created_at
+                     FROM knowledge_base kb
+                     WHERE kb.id = document.knowledge_base_id),
+                    ?)
+                WHERE created_at = 0
+                """, System.currentTimeMillis());
     }
 
     private static void initializeFtsTriggers(JdbcTemplate jdbc) {

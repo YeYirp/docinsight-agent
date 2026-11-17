@@ -27,10 +27,8 @@ public class DocumentIngestionService {
             throw new IllegalArgumentException("请选择要上传的文档");
         }
         String name = cleanName(file.getOriginalFilename());
-        String lower = name.toLowerCase();
-        if (!(lower.endsWith(".pdf") || lower.endsWith(".docx")
-                || lower.endsWith(".md") || lower.endsWith(".txt"))) {
-            throw new IllegalArgumentException("只支持 PDF / DOCX / MD / TXT");
+        if (!DocumentFormat.supports(name)) {
+            throw new IllegalArgumentException("只支持 " + DocumentFormat.supportedLabels());
         }
         if (knowledgeBaseId != null && store.getKnowledgeBase(knowledgeBaseId) == null) {
             throw new IllegalArgumentException("知识库不存在");
@@ -45,7 +43,8 @@ public class DocumentIngestionService {
         }
 
         DocumentInfo info = new DocumentInfo(
-                docId, name, knowledgeBaseId, parsed.pages(), chunks.size(), bytes.length);
+                docId, name, knowledgeBaseId, parsed.pages(), chunks.size(), bytes.length,
+                System.currentTimeMillis());
         store.save(info, chunks);
         return info;
     }

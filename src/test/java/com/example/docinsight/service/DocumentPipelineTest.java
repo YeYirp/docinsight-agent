@@ -52,4 +52,14 @@ class DocumentPipelineTest {
         assertThat(chunks).allMatch(chunk -> chunk.text().length() <= 240);
         assertThat(chunks.get(0).docId()).isEqualTo("doc1");
     }
+
+    @Test
+    void recognizesSupportedExtensionsCaseInsensitively() {
+        assertThat(DocumentFormat.fromFilename("guide.PDF")).contains(DocumentFormat.PDF);
+        assertThat(DocumentFormat.fromFilename("guide.docx")).contains(DocumentFormat.DOCX);
+        assertThat(DocumentFormat.supports("notes.md")).isTrue();
+        assertThat(DocumentFormat.supports("notes.txt")).isTrue();
+        assertThat(DocumentFormat.supports("notes.csv")).isFalse();
+        assertThat(DocumentFormat.supportedLabels()).isEqualTo("PDF / DOCX / MD / TXT");
+    }
 }

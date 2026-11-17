@@ -104,10 +104,10 @@ public class DocumentStore {
 
     public List<DocumentInfo> documentsForKnowledgeBase(String knowledgeBaseId) {
         return jdbc.query("""
-                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes
+                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes, created_at
                         FROM document
                         WHERE knowledge_base_id = ?
-                        ORDER BY name, id
+                        ORDER BY created_at DESC, name, id
                         """,
                 documentMapper(), knowledgeBaseId);
     }
@@ -131,15 +131,16 @@ public class DocumentStore {
         }
         jdbc.update("""
                         INSERT INTO document(
-                            id, knowledge_base_id, name, pages, chunk_count, size_bytes)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                            id, knowledge_base_id, name, pages, chunk_count, size_bytes, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                 info.id(),
                 info.knowledgeBaseId(),
                 info.name(),
                 info.pages(),
                 info.chunks(),
-                info.sizeBytes());
+                info.sizeBytes(),
+                info.createdAt());
         for (int index = 0; index < chunks.size(); index++) {
             Chunk chunk = chunks.get(index);
             jdbc.update("""
@@ -163,9 +164,9 @@ public class DocumentStore {
 
     public List<DocumentInfo> list() {
         return jdbc.query("""
-                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes
+                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes, created_at
                         FROM document
-                        ORDER BY name, id
+                        ORDER BY created_at DESC, name, id
                         """,
                 documentMapper());
     }
@@ -405,7 +406,8 @@ public class DocumentStore {
                 rs.getString("knowledge_base_id"),
                 rs.getInt("pages"),
                 rs.getInt("chunk_count"),
-                rs.getLong("size_bytes"));
+                rs.getLong("size_bytes"),
+                rs.getLong("created_at"));
     }
 
     private RowMapper<Chunk> chunkMapper() {

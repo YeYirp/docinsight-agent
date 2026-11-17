@@ -276,26 +276,89 @@
   .detail-actions .btn{min-height:42px;padding:9px 15px}
   .doc-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:13px}
   .doc-head h3{font-size:16px;margin:0;font-weight:700}
+  .doc-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .doc-search{position:relative;display:flex;align-items:center;flex:1 1 260px;max-width:430px;min-width:220px}
+  .doc-search > .lucide{position:absolute;left:12px;width:16px;height:16px;color:var(--faint);pointer-events:none}
+  .doc-search input{
+    width:100%;height:38px;border:1px solid var(--line-strong);border-radius:8px;background:#fff;
+    color:var(--ink);padding:0 36px 0 36px;outline:none;font-size:13.5px;
+  }
+  .doc-search input:focus{border-color:#8eb29b;box-shadow:0 0 0 3px rgba(30,138,91,.08)}
+  .doc-search input::placeholder{color:#9da6a1}
+  .doc-search-clear{
+    position:absolute;right:6px;width:26px;height:26px;border:0;border-radius:6px;background:transparent;
+    color:var(--muted);display:grid;place-items:center;padding:0;
+  }
+  .doc-search-clear:hover{background:#eef1ee;color:var(--ink)}
+  .doc-search-clear .lucide{width:14px;height:14px}
+  .doc-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .doc-sort{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px}
+  .doc-sort select{
+    height:38px;border:1px solid var(--line-strong);border-radius:8px;background:#fff;color:var(--ink);
+    padding:0 28px 0 10px;outline:none;font-size:13px;cursor:pointer;
+  }
+  .doc-sort select:focus{border-color:#8eb29b;box-shadow:0 0 0 3px rgba(30,138,91,.08)}
+  .sort-dir{height:38px;min-height:38px}
+  .view-switch{
+    display:flex;align-items:center;border:1px solid var(--line-strong);border-radius:8px;
+    background:#fff;overflow:hidden;flex:0 0 auto;
+  }
+  .view-switch button{
+    width:38px;height:36px;border:0;background:transparent;color:var(--muted);
+    display:grid;place-items:center;padding:0;
+  }
+  .view-switch button + button{border-left:1px solid var(--line)}
+  .view-switch button:hover{background:#f3f5f2;color:var(--ink)}
+  .view-switch button.active{background:var(--green-soft);color:var(--green-dark)}
+  .view-switch .lucide{width:17px;height:17px}
   .doc-list{border-top:1px solid var(--line)}
   .doc-row{
-    display:grid;grid-template-columns:40px minmax(0,1fr) auto 36px;gap:14px;align-items:center;
+    display:grid;grid-template-columns:40px minmax(0,1fr) 138px 82px 36px;gap:14px;align-items:center;
     min-height:72px;padding:12px 7px;border-bottom:1px solid var(--line);
   }
   .file-icon{width:36px;height:36px;border-radius:8px;background:#f0f3f0;color:#58645d;display:grid;place-items:center}
   .file-icon .lucide{width:17px;height:17px}
   .doc-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .doc-meta{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .doc-time{font-size:12.5px;color:var(--muted);white-space:nowrap}
   .doc-size{font-size:12.5px;color:var(--faint);white-space:nowrap}
   .delete-doc{
     width:36px;height:36px;border:0;background:transparent;color:#9a7774;border-radius:8px;display:grid;place-items:center;
   }
   .delete-doc:hover{background:var(--danger-soft);color:var(--danger)}
+  .doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+  .doc-card{
+    min-height:132px;border:1px solid var(--line);border-radius:8px;background:#fff;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;
+    padding:16px 13px;text-align:center;color:var(--ink);transition:border-color .16s ease,box-shadow .16s ease;
+  }
+  .doc-card:hover{border-color:#b9c6bd;box-shadow:0 8px 22px rgba(24,35,29,.06)}
+  .doc-card .file-icon{width:44px;height:44px;border-radius:10px}
+  .doc-card .file-icon .lucide{width:21px;height:21px}
+  .doc-card-name{
+    font-size:13.5px;font-weight:600;line-height:1.5;word-break:break-all;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
   .doc-empty{
     border:1px dashed #cfd6d0;border-radius:8px;padding:42px 20px;text-align:center;color:var(--muted);
     font-size:13.5px;
   }
   .doc-empty .lucide{width:26px;height:26px;color:#839089;margin-bottom:9px}
   .doc-empty strong{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
+  .doc-empty .btn{margin-top:14px}
+  .title-settings{
+    width:38px;height:38px;border:1px solid var(--line-strong);border-radius:8px;
+    background:#fff;color:var(--muted);
+  }
+  .title-settings:hover{background:#f3f5f2;color:var(--ink);border-color:#b9c1bb}
+  .settings-placeholder{
+    border:1px solid var(--line);border-radius:8px;background:#fff;min-height:360px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:48px 24px;
+  }
+  .settings-placeholder .chat-empty-symbol{margin-bottom:16px}
+  .settings-placeholder h2{font-size:23px;margin:0 0 8px;font-weight:700}
+  .settings-placeholder p{margin:0;color:var(--muted);font-size:13.5px}
   .upload-zone{
     border:1px dashed #cbd5ce;border-radius:8px;padding:25px 18px;text-align:center;
     background:#fbfcfb;color:var(--muted);font-size:13.5px;margin-top:16px;cursor:pointer;
@@ -376,6 +439,8 @@
     .library-view{padding:28px 24px 34px}
     .detail-head{align-items:stretch;flex-direction:column}
     .detail-actions{justify-content:flex-start}
+    .doc-row{grid-template-columns:40px minmax(0,1fr) 82px 36px}
+    .doc-time{display:none}
   }
   @media(max-width:620px){
     .brand-sub,.workspace-meta{display:none}
@@ -404,7 +469,10 @@
     .stats{gap:15px;font-size:12.5px}
     .detail-actions{width:100%}
     .detail-actions .btn{flex:1 1 145px}
+    .doc-search{max-width:none;flex-basis:100%}
+    .doc-tools{width:100%}
     .doc-row{grid-template-columns:36px minmax(0,1fr) 36px;gap:12px}
+    .doc-time{display:none}
     .doc-size{display:none}
     .modal-backdrop{padding:14px}
     .modal,.confirm-modal{padding:22px}
@@ -418,6 +486,22 @@
 </style>
 </head>
 <body>
+<script>
+  if (window.location.protocol === 'file:') {
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.innerHTML = `
+        <main style="min-height:100vh;display:grid;place-items:center;background:#f4f5f3;color:#17201d;font:15px/1.7 'Microsoft YaHei',sans-serif;padding:24px">
+          <section style="width:min(560px,100%);background:#fff;border:1px solid #e4e7e3;border-radius:10px;padding:36px;box-shadow:0 18px 55px rgba(23,32,29,.1);text-align:center">
+            <div style="font-size:40px;margin-bottom:14px">📄</div>
+            <h1 style="font-size:22px;margin:0 0 10px">请通过应用地址打开</h1>
+            <p style="margin:0 0 18px;color:#707a75">这个页面需要 Spring Boot 服务提供接口和静态资源，直接双击 HTML 文件无法使用。</p>
+            <p style="margin:0 0 18px">先启动 <strong>DocInsightApplication</strong>，然后访问：</p>
+            <a href="http://127.0.0.1:8080" style="display:inline-block;background:#1e8a5b;color:#fff;text-decoration:none;border-radius:8px;padding:10px 18px;font-weight:600">http://127.0.0.1:8080</a>
+          </section>
+        </main>`;
+    });
+  }
+</script>
 <div id="app" class="app-shell" v-cloak>
   <aside class="sidebar">
     <div class="brand">
@@ -459,7 +543,7 @@
   <main class="workspace">
     <header class="workspace-head">
       <div class="workspace-title">
-        <i :data-lucide="view==='chat' ? 'message-square-text' : 'library'"></i>
+        <i :data-lucide="view==='chat' ? 'message-square-text' : (settingsOpen ? 'settings' : 'library')"></i>
         <h1>{{ view==='chat' ? '新对话' : pageTitle }}</h1>
       </div>
       <div class="head-actions">
@@ -645,73 +729,165 @@
           </template>
 
           <template v-else>
-            <div class="detail-nav">
-              <button class="back-button" @click="closeKnowledgeBase">
-                <i data-lucide="arrow-left"></i>
-                <span>全部知识库</span>
-              </button>
-            </div>
-            <div class="detail-head">
-              <div>
-                <div class="detail-title-row">
-                  <h2>{{ currentKb.name }}</h2>
-                </div>
-                <p class="detail-desc">{{ currentKb.description || '暂无描述' }}</p>
-                <div class="stats">
-                  <span class="stat"><i data-lucide="files"></i>{{ currentKb.documentCount }} 篇文档</span>
-                  <span class="stat"><i data-lucide="blocks"></i>{{ currentKb.chunkCount }} 个索引块</span>
-                  <span class="stat"><i data-lucide="calendar-days"></i>{{ formatDate(currentKb.createdAt) }}</span>
-                </div>
-              </div>
-              <div class="detail-actions">
-                <button class="btn primary" @click="chatWithCurrent">
-                  <i data-lucide="message-square-text"></i>
-                  用此知识库对话
-                </button>
-                <button class="btn" :disabled="uploading" @click="$refs.kbFile.click()">
-                  <i data-lucide="file-plus-2"></i>
-                  添加文档
-                </button>
-                <button class="btn danger" :disabled="uploading" @click="requestDeleteKnowledgeBase">
-                  <i data-lucide="trash-2"></i>
-                  删除
+            <template v-if="settingsOpen">
+              <div class="detail-nav">
+                <button class="back-button" @click="closeKbSettings">
+                  <i data-lucide="arrow-left"></i>
+                  <span>返回知识库</span>
                 </button>
               </div>
-            </div>
+              <div class="settings-placeholder">
+                <div class="chat-empty-symbol"><i data-lucide="settings"></i></div>
+                <h2>{{ currentKb.name }} · 设置</h2>
+                <p>等待更新</p>
+              </div>
+            </template>
 
-            <div class="doc-head">
-              <h3>文档</h3>
-              <span class="workspace-meta" v-if="uploading">正在解析文档…</span>
-            </div>
-
-            <div class="doc-list" v-if="documents.length">
-              <div class="doc-row" v-for="doc in documents" :key="doc.id">
-                <span class="file-icon"><i data-lucide="file-text"></i></span>
+            <template v-else>
+              <div class="detail-nav">
+                <button class="back-button" @click="closeKnowledgeBase">
+                  <i data-lucide="arrow-left"></i>
+                  <span>全部知识库</span>
+                </button>
+              </div>
+              <div class="detail-head">
                 <div>
-                  <div class="doc-name" :title="doc.name">{{ doc.name }}</div>
-                  <div class="doc-meta">{{ doc.pages }} 页 · {{ doc.chunks }} 个索引块</div>
+                  <div class="detail-title-row">
+                    <h2>{{ currentKb.name }}</h2>
+                    <button
+                      class="icon-button title-settings"
+                      title="知识库设置"
+                      aria-label="知识库设置"
+                      @click="openKbSettings">
+                      <i data-lucide="settings"></i>
+                    </button>
+                  </div>
+                  <p class="detail-desc">{{ currentKb.description || '暂无描述' }}</p>
+                  <div class="stats">
+                    <span class="stat"><i data-lucide="files"></i>{{ currentKb.documentCount }} 篇文档</span>
+                    <span class="stat"><i data-lucide="blocks"></i>{{ currentKb.chunkCount }} 个索引块</span>
+                    <span class="stat"><i data-lucide="calendar-days"></i>{{ formatDate(currentKb.createdAt) }}</span>
+                  </div>
                 </div>
-                <span class="doc-size">{{ formatSize(doc.sizeBytes) }}</span>
-                <button class="delete-doc" title="删除文档" aria-label="删除文档" @click="requestDeleteDocument(doc)">
-                  <i data-lucide="trash-2"></i>
-                </button>
+                <div class="detail-actions">
+                  <button class="btn primary" @click="chatWithCurrent">
+                    <i data-lucide="message-square-text"></i>
+                    用此知识库对话
+                  </button>
+                  <button class="btn" :disabled="uploading" @click="$refs.kbFile.click()">
+                    <i data-lucide="file-plus-2"></i>
+                    添加文档
+                  </button>
+                  <button class="btn danger" :disabled="uploading" @click="requestDeleteKnowledgeBase">
+                    <i data-lucide="trash-2"></i>
+                    删除
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div class="doc-empty" v-else>
-              <i data-lucide="file-stack"></i>
-              <strong>还没有文档</strong>
-              添加 PDF、Word、Markdown 或 TXT 文件开始构建知识库。
-            </div>
+              <div class="doc-head">
+                <h3>文档</h3>
+                <span class="workspace-meta" v-if="uploading">正在解析文档…</span>
+              </div>
 
-            <div
-              class="upload-zone"
-              @click="$refs.kbFile.click()"
-              @dragover.prevent
-              @drop.prevent="uploadDropped">
-              <strong>点击选择，或把文件拖到这里</strong>
-              支持 PDF / DOCX / MD / TXT，单文件不超过 50MB
-            </div>
+              <div class="doc-toolbar">
+                <label class="doc-search">
+                  <i data-lucide="search"></i>
+                  <input
+                    v-model="docQuery"
+                    type="search"
+                    autocomplete="off"
+                    placeholder="搜索文档名称，支持 .pdf 等扩展名"
+                    aria-label="搜索文档名称">
+                  <button
+                    v-if="docQuery"
+                    type="button"
+                    class="doc-search-clear"
+                    title="清空搜索"
+                    aria-label="清空搜索"
+                    @click="docQuery=''">
+                    <i data-lucide="x"></i>
+                  </button>
+                </label>
+                <div class="doc-tools">
+                  <label class="doc-sort">
+                    <span>排序</span>
+                    <select v-model="docSort" aria-label="文档排序方式">
+                      <option value="uploaded">上传时间</option>
+                      <option value="size">文件大小</option>
+                      <option value="type">文件类型</option>
+                    </select>
+                  </label>
+                  <button
+                    class="btn small sort-dir"
+                    :title="docSortDir==='asc' ? '当前升序，点击切换为降序' : '当前降序，点击切换为升序'"
+                    @click="toggleDocSortDir">
+                    <i :data-lucide="docSortDir==='asc' ? 'arrow-up' : 'arrow-down'"></i>
+                    {{ docSortDir==='asc' ? '升序' : '降序' }}
+                  </button>
+                  <div class="view-switch" role="group" aria-label="文档显示方式">
+                    <button
+                      :class="{active:docView==='detail'}"
+                      title="详细视图"
+                      aria-label="详细视图"
+                      @click="docView='detail'">
+                      <i data-lucide="list"></i>
+                    </button>
+                    <button
+                      :class="{active:docView==='simple'}"
+                      title="简洁视图"
+                      aria-label="简洁视图"
+                      @click="docView='simple'">
+                      <i data-lucide="layout-grid"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="doc-list" v-if="filteredDocuments.length && docView==='detail'">
+                <div class="doc-row" v-for="doc in filteredDocuments" :key="doc.id">
+                  <span class="file-icon"><i data-lucide="file-text"></i></span>
+                  <div>
+                    <div class="doc-name" :title="doc.name">{{ doc.name }}</div>
+                    <div class="doc-meta">{{ doc.pages }} 页 · {{ doc.chunks }} 个索引块</div>
+                  </div>
+                  <span class="doc-time">{{ formatDateTime(doc.createdAt) }}</span>
+                  <span class="doc-size">{{ formatSize(doc.sizeBytes) }}</span>
+                  <button class="delete-doc" title="删除文档" aria-label="删除文档" @click="requestDeleteDocument(doc)">
+                    <i data-lucide="trash-2"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="doc-grid" v-else-if="filteredDocuments.length">
+                <div class="doc-card" v-for="doc in filteredDocuments" :key="doc.id" :title="doc.name">
+                  <span class="file-icon"><i data-lucide="file-text"></i></span>
+                  <span class="doc-card-name">{{ doc.name }}</span>
+                </div>
+              </div>
+
+              <div class="doc-empty" v-else-if="documents.length">
+                <i data-lucide="search-x"></i>
+                <strong>没有找到匹配的文档</strong>
+                换个名称或扩展名试试。
+                <button class="btn small" @click="docQuery=''">清空搜索</button>
+              </div>
+
+              <div class="doc-empty" v-else>
+                <i data-lucide="file-stack"></i>
+                <strong>还没有文档</strong>
+                添加 PDF、Word、Markdown 或 TXT 文件开始构建知识库。
+              </div>
+
+              <div
+                class="upload-zone"
+                @click="$refs.kbFile.click()"
+                @dragover.prevent
+                @drop.prevent="uploadDropped">
+                <strong>点击选择，或把文件拖到这里</strong>
+                支持 PDF / DOCX / MD / TXT，单文件不超过 50MB
+              </div>
+            </template>
           </template>
         </div>
       </section>
@@ -788,7 +964,10 @@
 
 <script src="/vendor/vue.global.prod.js"></script>
 <script src="/vendor/lucide.min.js"></script>
+<script src="/js/api-client.js"></script>
+<script src="/js/doc-utils.js"></script>
 <script>
+if (window.location.protocol !== 'file:') {
 const { createApp } = Vue;
 
 createApp({
@@ -798,6 +977,11 @@ createApp({
       knowledgeBases: [],
       currentKbId: null,
       documents: [],
+      docQuery: '',
+      docSort: 'uploaded',
+      docSortDir: 'desc',
+      docView: 'detail',
+      settingsOpen: false,
       selectedKbIds: [],
       selectionInitialized: false,
       messages: [],
@@ -832,7 +1016,12 @@ createApp({
       return this.knowledgeBases.find(item => item.id === this.currentKbId) || null;
     },
     pageTitle() {
+      if (this.settingsOpen && this.currentKb) return '知识库设置';
       return this.currentKb ? this.currentKb.name : '知识库';
+    },
+    filteredDocuments() {
+      return DocUtils.filterAndSortDocuments(
+        this.documents, this.docQuery, this.docSort, this.docSortDir);
     },
     totalDocuments() {
       return this.knowledgeBases.reduce((sum, item) => sum + item.documentCount, 0);
@@ -866,20 +1055,7 @@ createApp({
       if (window.lucide) window.lucide.createIcons();
     },
     async api(url, options = {}) {
-      const response = await fetch(url, options);
-      if (!response.ok) {
-        const text = await response.text();
-        let message = text;
-        try {
-          const parsed = JSON.parse(text);
-          message = parsed.detail || parsed.message || parsed.error || text;
-        } catch (_) {
-          // Keep the raw response for non-JSON errors.
-        }
-        throw new Error(message || ('HTTP ' + response.status));
-      }
-      if (response.status === 204) return null;
-      return response.json();
+      return ApiClient.request(url, options);
     },
     async refresh() {
       this.loading = true;
@@ -926,10 +1102,15 @@ createApp({
     showLibrary() {
       this.view = 'library';
       this.scopeOpen = false;
+      this.settingsOpen = false;
     },
     async openKnowledgeBase(id) {
       this.currentKbId = id;
       this.view = 'library';
+      this.settingsOpen = false;
+      this.docQuery = '';
+      this.docSort = 'uploaded';
+      this.docSortDir = 'desc';
       this.loading = true;
       try {
         await this.loadDocuments();
@@ -942,6 +1123,19 @@ createApp({
     closeKnowledgeBase() {
       this.currentKbId = null;
       this.documents = [];
+      this.docQuery = '';
+      this.settingsOpen = false;
+    },
+    openKbSettings() {
+      if (!this.currentKb) return;
+      this.settingsOpen = true;
+    },
+    closeKbSettings() {
+      this.settingsOpen = false;
+      this.docQuery = '';
+    },
+    toggleDocSortDir() {
+      this.docSortDir = this.docSortDir === 'asc' ? 'desc' : 'asc';
     },
     openCreate() {
       this.createForm = { name: '', description: '' };
@@ -1057,6 +1251,7 @@ createApp({
       this.selectedKbIds = this.selectedKbIds.filter(item => item !== id);
       this.currentKbId = null;
       this.documents = [];
+      this.settingsOpen = false;
       await this.loadKnowledgeBases();
       this.notify('知识库已删除');
     },
@@ -1212,14 +1407,13 @@ createApp({
       });
     },
     formatSize(bytes) {
-      if (!bytes) return '0 B';
-      if (bytes < 1024) return bytes + ' B';
-      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+      return DocUtils.formatSize(bytes);
     },
     formatDate(timestamp) {
-      if (!timestamp) return '';
-      return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(timestamp);
+      return DocUtils.formatDate(timestamp);
+    },
+    formatDateTime(timestamp) {
+      return DocUtils.formatDateTime(timestamp);
     },
     notify(message, type = 'success') {
       if (!message) return;
@@ -1231,6 +1425,7 @@ createApp({
     }
   }
 }).mount('#app');
+}
 </script>
 </body>
 </html>

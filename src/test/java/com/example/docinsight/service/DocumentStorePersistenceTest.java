@@ -52,6 +52,9 @@ class DocumentStorePersistenceTest {
         assertThat(reopened.documentsForKnowledgeBase(knowledgeBase.id()))
                 .extracting(DocumentInfo::name)
                 .containsExactly("manual.md");
+        assertThat(reopened.documentsForKnowledgeBase(knowledgeBase.id()))
+                .extracting(DocumentInfo::createdAt)
+                .allMatch(createdAt -> createdAt > 0);
         assertThat(reopened.chunksForDocuments(Set.of("d1"))).hasSize(2);
         assertThat(reopened.chunksWithoutVectors(Set.of("d1")))
                 .extracting(Chunk::id)
@@ -77,6 +80,40 @@ class DocumentStorePersistenceTest {
         assertThat(reopened.totalChunks()).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chunk_vector", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chunk_fts", Long.class)).isZero();
+    }
+
+    @Test
+    void addsUploadTimeColumnToLegacyDatabase() throws Exception {
+        Path dataDirectory = Path.of(
+                "target", "test-data", "legacy-" + UUID.randomUUID());
+        Path extension = SqliteExtensionLoader.resolve(dataDirectory, "");
+        String file = dataDirectory.resolve("docinsight.db").toAbsolutePath()
+                .toString().replace('\\', '/');
+        DataSource dataSource = new SqliteDataSource("jdbc:sqlite:" + file, extension);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute("""
+                CREATE TABLE document (
+                    id TEXT PRIMARY KEY,
+                    knowledge_base_id TEXT,
+                    name TEXT NOT NULL,
+                    pages INTEGER NOT NULL,
+                    chunk_count INTEGER NOT NULL,
+                    size_bytes INTEGER NOT NULL
+                )
+                """);
+        jdbc.update("""
+                INSERT INTO document(id, knowledge_base_id, name, pages, chunk_count, size_bytes)
+                VALUES ('legacy', NULL, 'old.pdf', 1, 1, 10)
+                """);
+
+        SqliteSchema.initialize(dataSource, jdbc, 3);
+
+        assertThat(jdbc.queryForObject(
+                "SELECT created_at FROM document WHERE id = 'legacy'", Long.class))
+                .isPositive();
+        List<DocumentInfo> legacyDocuments = new DocumentStore(jdbc).list();
+        assertThat(legacyDocuments).hasSize(1);
+        assertThat(legacyDocuments.get(0).createdAt()).isPositive();
     }
 
     private void initializeSchema(DataSource dataSource, JdbcTemplate jdbc) {

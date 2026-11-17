@@ -40,14 +40,12 @@ public class DocumentParser {
     };
 
     public Parsed parse(String filename, byte[] bytes) throws IOException {
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".pdf")) {
-            return parsePdf(filename, bytes);
-        }
-        if (lower.endsWith(".docx")) {
-            return parseDocx(filename, bytes);
-        }
-        return parseText(filename, bytes);
+        DocumentFormat format = DocumentFormat.fromFilename(filename).orElse(DocumentFormat.TEXT);
+        return switch (format) {
+            case PDF -> parsePdf(filename, bytes);
+            case DOCX -> parseDocx(filename, bytes);
+            case MARKDOWN, TEXT -> parseText(filename, bytes);
+        };
     }
 
     private Parsed parsePdf(String filename, byte[] bytes) throws IOException {

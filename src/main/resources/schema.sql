@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS document (
     pages INTEGER NOT NULL,
     chunk_count INTEGER NOT NULL,
     size_bytes INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
     FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_base(id) ON DELETE CASCADE
 );
 
