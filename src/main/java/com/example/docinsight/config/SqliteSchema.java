@@ -41,6 +41,10 @@ public final class SqliteSchema {
                     ?)
                 WHERE created_at = 0
                 """, System.currentTimeMillis());
+        jdbc.execute("""
+                CREATE INDEX IF NOT EXISTS idx_document_knowledge_base_created
+                ON document(knowledge_base_id, created_at)
+                """);
     }
 
     private static void initializeFtsTriggers(JdbcTemplate jdbc) {

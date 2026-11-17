@@ -49,6 +49,7 @@ class DocumentStorePersistenceTest {
         assertThat(restored).isNotNull();
         assertThat(restored.documentCount()).isEqualTo(1);
         assertThat(restored.chunkCount()).isEqualTo(2);
+        assertThat(restored.updatedAt()).isGreaterThanOrEqualTo(restored.createdAt());
         assertThat(reopened.documentsForKnowledgeBase(knowledgeBase.id()))
                 .extracting(DocumentInfo::name)
                 .containsExactly("manual.md");

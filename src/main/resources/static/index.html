@@ -235,6 +235,7 @@
     margin:0;color:var(--muted);font-size:13.5px;line-height:1.65;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   }
+  .kb-card-time{display:block;margin-top:10px;color:var(--faint);font-size:11.5px}
   .kb-card-foot{
     margin-top:auto;padding-top:17px;display:flex;align-items:center;justify-content:space-between;
     gap:12px;color:var(--muted);font-size:12.5px;
@@ -252,7 +253,7 @@
   }
   .empty-library .chat-empty-symbol{margin-bottom:14px}
   .empty-library h3{font-size:20px;margin:0 0 7px}
-  .empty-library p{margin:0 0 20px;color:var(--muted);font-size:14px}
+  .empty-library p{margin:0;color:var(--muted);font-size:14px}
   .detail-nav{display:flex;align-items:center;margin-bottom:24px}
   .back-button{
     min-height:40px;margin-left:-10px;border:1px solid transparent;background:transparent;
@@ -365,6 +366,171 @@
   }
   .upload-zone:hover{border-color:#98b4a2;background:#f7faf8}
   .upload-zone strong{display:block;color:var(--ink);font-size:14.5px;margin-bottom:4px}
+  .kb-detail-page{width:100%;max-width:1180px;margin:0 auto}
+  .kb-topline{display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+  .kb-breadcrumb{display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 280px}
+  .kb-back{
+    width:30px;height:30px;border:1px solid var(--line);border-radius:7px;background:#f7f8f6;
+    color:var(--muted);display:grid;place-items:center;padding:0;flex:0 0 auto;
+  }
+  .kb-back:hover{background:#ecefeb;color:var(--ink)}
+  .kb-back .lucide{width:16px;height:16px}
+  .kb-crumb-link{
+    border:0;background:transparent;color:var(--muted);padding:2px 0;font-size:14px;font-weight:600;
+  }
+  .kb-crumb-link:hover{color:var(--green-dark)}
+  .kb-crumb-sep{width:14px;height:14px;color:#b3bbb6;flex:0 0 auto}
+  .kb-crumb-current{
+    color:var(--ink);font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .kb-crumb-settings{width:30px;height:30px;margin-left:1px}
+  .kb-crumb-settings .lucide{width:16px;height:16px}
+  .kb-tabs{
+    display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--line);
+    border-radius:9px;background:#f5f7f4;flex:0 0 auto;
+  }
+  .kb-tab{
+    border:0;background:transparent;color:#5d6862;border-radius:7px;padding:7px 13px;
+    display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;
+    transition:background .16s ease,color .16s ease,box-shadow .16s ease;
+  }
+  .kb-tab .lucide{width:16px;height:16px}
+  .kb-tab:hover{background:#ecefeb;color:var(--ink)}
+  .kb-tab.active{background:var(--green-soft);color:var(--green-dark);box-shadow:0 1px 3px rgba(30,138,91,.08)}
+  .kb-top-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex:0 0 auto}
+  .kb-busy{
+    display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:var(--green-soft);
+    color:var(--green-dark);padding:5px 9px;font-size:11.5px;white-space:nowrap;
+  }
+  .kb-busy .lucide{width:14px;height:14px;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .kb-icon-btn{
+    width:36px;height:36px;border:1px solid transparent;border-radius:8px;background:transparent;
+    color:var(--muted);display:grid;place-items:center;padding:0;flex:0 0 auto;
+  }
+  .kb-icon-btn:hover{background:#f1f3f0;border-color:var(--line);color:var(--ink)}
+  .kb-icon-btn:disabled{opacity:.45}
+  .kb-icon-btn .lucide{width:17px;height:17px}
+  .kb-icon-danger:hover{background:var(--danger-soft);border-color:#f0d6d3;color:var(--danger)}
+  .kb-titlebar{
+    display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
+    margin-bottom:18px;
+  }
+  .kb-heading{min-width:220px;flex:1 1 320px}
+  .kb-heading-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .kb-heading h2{font-size:23px;line-height:1.3;margin:0;font-weight:700}
+  .kb-doc-count{
+    border:1px solid var(--line);border-radius:999px;background:#f4f6f3;color:var(--muted);
+    padding:3px 10px;font-size:12px;font-weight:500;white-space:nowrap;
+  }
+  .kb-description{
+    margin:7px 0 0;color:var(--muted);font-size:13px;line-height:1.6;max-width:650px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .kb-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:1 1 620px;flex-wrap:wrap}
+  .kb-search{max-width:360px;min-width:240px;flex:1 1 280px}
+  .kb-search input{height:40px}
+  .kb-sort{
+    position:relative;display:flex;align-items:center;gap:7px;height:40px;border:1px solid var(--line-strong);
+    border-radius:8px;background:#fff;padding:0 30px 0 11px;cursor:pointer;flex:0 0 auto;
+  }
+  .kb-sort > .lucide:first-child{width:15px;height:15px;color:var(--muted)}
+  .kb-sort select{
+    appearance:none;border:0;background:transparent;outline:none;color:var(--ink);cursor:pointer;
+    padding:0;font-size:13px;max-width:116px;
+  }
+  .kb-sort-caret{position:absolute;right:9px;width:14px;height:14px;color:var(--faint);pointer-events:none}
+  .kb-sort:focus-within{border-color:#8eb29b;box-shadow:0 0 0 3px rgba(30,138,91,.08)}
+  .kb-sort-dir{width:40px;height:40px;border-color:var(--line-strong);background:#fff}
+  .sort-dir-arrow{
+    width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;
+    stroke-linecap:round;stroke-linejoin:round;transition:transform .16s ease;
+  }
+  .sort-dir-arrow.asc{transform:rotate(180deg)}
+  .sort-dropdown{position:relative;display:inline-flex;flex:0 0 auto}
+  .sort-trigger{
+    display:inline-flex;align-items:center;justify-content:space-between;gap:8px;height:40px;
+    border:1px solid var(--line-strong);border-radius:8px;background:#fff;color:var(--ink);
+    padding:0 11px;font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;
+    transition:border-color .16s ease,background .16s ease,box-shadow .16s ease;
+  }
+  .sort-trigger:hover{border-color:#b9c1bb;background:#fafbfa}
+  .sort-trigger.open{border-color:#8eb29b;box-shadow:0 0 0 3px rgba(30,138,91,.08)}
+  .sort-trigger .lucide{width:15px;height:15px;color:var(--muted)}
+  .sort-trigger .sort-chevron{width:14px;height:14px;color:var(--faint);transition:transform .16s ease}
+  .sort-trigger.open .sort-chevron{transform:rotate(180deg)}
+  .kb-list-sort,.doc-sort-trigger{min-width:132px}
+  .sort-menu{
+    position:absolute;right:0;top:calc(100% + 6px);z-index:35;min-width:100%;
+    border:1px solid var(--line-strong);border-radius:9px;background:#fff;padding:5px;
+    box-shadow:0 14px 34px rgba(23,32,29,.14);animation:sort-menu-in .12s ease-out;
+  }
+  @keyframes sort-menu-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .sort-option{
+    width:100%;border:0;border-radius:6px;background:transparent;color:var(--ink);
+    display:flex;align-items:center;justify-content:space-between;gap:18px;
+    padding:8px 9px;font-size:13px;text-align:left;white-space:nowrap;text-decoration:none;
+  }
+  .sort-option:hover{background:#f3f5f2}
+  .sort-option.active{background:var(--green-soft);color:var(--green-dark);font-weight:600}
+  .sort-option .lucide{width:14px;height:14px;color:var(--green-dark)}
+  .kb-chat-btn,.kb-add-btn{height:40px;min-height:40px;padding:0 14px;font-size:13px;border-radius:8px}
+  .kb-chat-btn{background:#fff;border-color:var(--line-strong)}
+  .kb-add-btn{background:var(--green);border-color:var(--green);color:#fff;box-shadow:0 5px 14px rgba(30,138,91,.16)}
+  .kb-add-btn:hover{background:var(--green-dark);border-color:var(--green-dark)}
+  .kb-panel{
+    border:1px solid var(--line);border-radius:10px;background:#fff;
+    overflow:hidden;box-shadow:0 1px 2px rgba(23,32,29,.03);
+  }
+  .kb-panel .doc-list{border-top:0}
+  .kb-list-head{
+    display:grid;grid-template-columns:40px minmax(0,1fr) 138px 82px 36px;gap:14px;align-items:center;
+    padding:10px 18px;border-bottom:1px solid var(--line);background:#fbfcfb;
+    color:var(--faint);font-size:11.5px;font-weight:600;letter-spacing:.02em;
+  }
+  .kb-doc-row{padding:14px 18px;min-height:76px;transition:background .15s ease}
+  .kb-doc-row:hover{background:#fbfcfb}
+  .kb-doc-row:last-child{border-bottom:0}
+  .kb-doc-row .delete-doc{opacity:.28;transition:opacity .15s ease}
+  .kb-doc-row:hover .delete-doc{opacity:1}
+  .file-tone-pdf{background:#fff0ee;color:#c05c4e}
+  .file-tone-docx{background:#edf4ff;color:#3e72b5}
+  .file-tone-md{background:#f0f4f1;color:#4f6f5c}
+  .file-tone-txt{background:#f3f5f2;color:#66726b}
+  .file-tone-generic{background:#f0f3f0;color:#58645d}
+  .kb-gallery{padding:18px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+  .kb-gallery .doc-card{min-height:140px;background:#fbfcfb}
+  .kb-empty{
+    min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:46px 24px;text-align:center;
+  }
+  .kb-empty-art{position:relative;width:118px;height:104px;display:grid;place-items:center;margin-bottom:16px}
+  .kb-empty-halo{
+    position:absolute;inset:5px;border-radius:50%;
+    background:radial-gradient(circle at 50% 52%,#dff3e6 0,#eef8f1 48%,rgba(238,248,241,0) 72%);
+  }
+  .kb-empty-file{
+    position:relative;width:70px;height:70px;border-radius:18px;background:#edf8f1;color:#2a9d69;
+    display:grid;place-items:center;box-shadow:0 12px 30px rgba(42,157,105,.12);
+    transition:transform .18s ease,box-shadow .18s ease;
+  }
+  .kb-empty-file .lucide{width:30px;height:30px}
+  .kb-empty-upload{cursor:pointer}
+  .kb-empty-upload:hover .kb-empty-file{transform:translateY(-3px);box-shadow:0 16px 36px rgba(42,157,105,.17)}
+  .kb-empty strong{font-size:18px;line-height:1.4;margin:0;color:var(--ink)}
+  .kb-empty p{margin:7px 0 0;color:var(--muted);font-size:13px;line-height:1.65}
+  .kb-empty .btn{margin-top:18px}
+  .kb-empty-search{min-height:330px}
+  .kb-empty-search .kb-empty-art{width:92px;height:84px}
+  .kb-empty-search .kb-empty-file{width:60px;height:60px;border-radius:16px;background:#f4f6f3;color:#7b8780;box-shadow:none}
+  .kb-upload-strip{
+    min-height:52px;margin-top:14px;border:1px dashed #cbd5ce;border-radius:9px;background:#fbfcfb;
+    padding:10px 14px;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;
+    cursor:pointer;transition:border-color .16s ease,background .16s ease;
+  }
+  .kb-upload-strip:hover{border-color:#98b4a2;background:#f7faf8}
+  .kb-upload-strip .lucide{width:17px;height:17px;color:var(--green)}
+  .kb-upload-hint{margin-left:auto;color:var(--faint);font-size:11.5px;white-space:nowrap}
   .modal-backdrop{
     position:fixed;inset:0;background:rgba(18,25,21,.46);display:grid;place-items:center;
     padding:24px;z-index:100;backdrop-filter:blur(2px);
@@ -462,6 +628,7 @@
     .library-head h2{font-size:25px}
     .library-head p{font-size:13.5px}
     .library-head .btn{width:100%}
+    .library-head .sort-dropdown,.library-head .sort-trigger{width:100%}
     .kb-grid{grid-template-columns:1fr}
     .kb-card{min-height:184px;padding:18px}
     .detail-title-row h2{font-size:25px}
@@ -482,6 +649,32 @@
     .confirm-modal .modal-actions{padding-left:0}
     .modal-actions .btn{flex:1}
     .toast{right:14px;bottom:14px}
+  }
+  @media(max-width:1080px){
+    .kb-topline{align-items:flex-start}
+    .kb-top-actions{flex-wrap:wrap}
+    .kb-titlebar{align-items:flex-start;flex-direction:column}
+    .kb-heading{flex:0 0 auto}
+    .kb-controls{flex:0 0 auto;width:100%;justify-content:flex-start}
+    .kb-search{max-width:none;flex:0 1 100%;width:100%}
+    .kb-list-head{display:none}
+    .kb-gallery{padding:14px}
+  }
+  @media(max-width:620px){
+    .kb-topline{gap:10px;margin-bottom:16px}
+    .kb-breadcrumb{flex-basis:100%}
+    .kb-top-actions{flex:1 1 100%;margin-left:0;justify-content:flex-end}
+    .kb-tabs{width:auto;flex:1 1 auto}
+    .kb-tab{flex:1;justify-content:center}
+    .kb-heading h2{font-size:21px}
+    .kb-description{white-space:normal}
+    .kb-controls{gap:6px}
+    .kb-search{min-width:0}
+    .kb-sort{flex:1 1 auto}
+    .kb-chat-btn,.kb-add-btn{flex:1 1 auto;justify-content:center}
+    .kb-panel{min-height:0}
+    .kb-empty{min-height:320px;padding:36px 16px}
+    .kb-upload-hint{display:none}
   }
 </style>
 </head>
@@ -696,17 +889,48 @@
                 </div>
                 <p>把同一主题的文档放在一起，对话时可选择一个或多个知识库参与回答。</p>
               </div>
-              <button class="btn primary" @click="openCreate">
-                <i data-lucide="plus"></i>
-                新建知识库
-              </button>
+              <div class="sort-dropdown">
+                <button
+                  type="button"
+                  class="sort-trigger kb-list-sort"
+                  :class="{open:openMenu==='kbSort'}"
+                  :aria-expanded="openMenu==='kbSort'"
+                  aria-label="知识库排序方式"
+                  @click.stop="toggleMenu('kbSort')">
+                  <i data-lucide="arrow-up-down"></i>
+                  <span>{{ kbSortLabel }}</span>
+                  <i class="sort-chevron" data-lucide="chevron-down"></i>
+                </button>
+                <div class="sort-menu" v-if="openMenu==='kbSort'" @click.stop>
+                  <button
+                    type="button"
+                    class="sort-option"
+                    :class="{active:kbSort==='updated'}"
+                    @click="selectKbSort('updated')">
+                    <span>最新更新</span>
+                    <i v-if="kbSort==='updated'" data-lucide="check"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="sort-option"
+                    :class="{active:kbSort==='created'}"
+                    @click="selectKbSort('created')">
+                    <span>最新创建</span>
+                    <i v-if="kbSort==='created'" data-lucide="check"></i>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div class="kb-grid" v-if="knowledgeBases.length">
-              <button class="kb-card" v-for="item in knowledgeBases" :key="item.id" @click="openKnowledgeBase(item.id)">
+              <button class="kb-card" v-for="item in sortedKnowledgeBases" :key="item.id" @click="openKnowledgeBase(item.id)">
                 <span class="kb-card-icon"><i data-lucide="folder-open"></i></span>
                 <h3>{{ item.name }}</h3>
                 <p>{{ item.description || '暂无描述' }}</p>
+                <span class="kb-card-time">
+                  {{ kbSort==='created' ? '创建于' : '更新于' }}
+                  {{ formatDateTime(item.updatedAt || item.createdAt) }}
+                </span>
                 <span class="kb-card-foot">
                   <span class="kb-card-meta">
                     <i data-lucide="files"></i>
@@ -721,10 +945,6 @@
               <div class="chat-empty-symbol"><i data-lucide="library-big"></i></div>
               <h3>创建第一个知识库</h3>
               <p>先按业务或主题建立资料空间，再向里面添加文档。</p>
-              <button class="btn primary" @click="openCreate">
-                <i data-lucide="plus"></i>
-                新建知识库
-              </button>
             </div>
           </template>
 
@@ -744,148 +964,232 @@
             </template>
 
             <template v-else>
-              <div class="detail-nav">
-                <button class="back-button" @click="closeKnowledgeBase">
-                  <i data-lucide="arrow-left"></i>
-                  <span>全部知识库</span>
-                </button>
-              </div>
-              <div class="detail-head">
-                <div>
-                  <div class="detail-title-row">
-                    <h2>{{ currentKb.name }}</h2>
+              <div class="kb-detail-page">
+                <div class="kb-topline">
+                  <div class="kb-breadcrumb">
                     <button
-                      class="icon-button title-settings"
+                      class="kb-back"
+                      title="返回全部知识库"
+                      aria-label="返回全部知识库"
+                      @click="closeKnowledgeBase">
+                      <i data-lucide="arrow-left"></i>
+                    </button>
+                    <button class="kb-crumb-link" @click="closeKnowledgeBase">知识库</button>
+                    <i class="kb-crumb-sep" data-lucide="chevron-right"></i>
+                    <span class="kb-crumb-current" :title="currentKb.name">{{ currentKb.name }}</span>
+                    <button
+                      class="kb-icon-btn kb-crumb-settings"
                       title="知识库设置"
                       aria-label="知识库设置"
                       @click="openKbSettings">
                       <i data-lucide="settings"></i>
                     </button>
                   </div>
-                  <p class="detail-desc">{{ currentKb.description || '暂无描述' }}</p>
-                  <div class="stats">
-                    <span class="stat"><i data-lucide="files"></i>{{ currentKb.documentCount }} 篇文档</span>
-                    <span class="stat"><i data-lucide="blocks"></i>{{ currentKb.chunkCount }} 个索引块</span>
-                    <span class="stat"><i data-lucide="calendar-days"></i>{{ formatDate(currentKb.createdAt) }}</span>
-                  </div>
-                </div>
-                <div class="detail-actions">
-                  <button class="btn primary" @click="chatWithCurrent">
-                    <i data-lucide="message-square-text"></i>
-                    用此知识库对话
-                  </button>
-                  <button class="btn" :disabled="uploading" @click="$refs.kbFile.click()">
-                    <i data-lucide="file-plus-2"></i>
-                    添加文档
-                  </button>
-                  <button class="btn danger" :disabled="uploading" @click="requestDeleteKnowledgeBase">
-                    <i data-lucide="trash-2"></i>
-                    删除
-                  </button>
-                </div>
-              </div>
-
-              <div class="doc-head">
-                <h3>文档</h3>
-                <span class="workspace-meta" v-if="uploading">正在解析文档…</span>
-              </div>
-
-              <div class="doc-toolbar">
-                <label class="doc-search">
-                  <i data-lucide="search"></i>
-                  <input
-                    v-model="docQuery"
-                    type="search"
-                    autocomplete="off"
-                    placeholder="搜索文档名称，支持 .pdf 等扩展名"
-                    aria-label="搜索文档名称">
-                  <button
-                    v-if="docQuery"
-                    type="button"
-                    class="doc-search-clear"
-                    title="清空搜索"
-                    aria-label="清空搜索"
-                    @click="docQuery=''">
-                    <i data-lucide="x"></i>
-                  </button>
-                </label>
-                <div class="doc-tools">
-                  <label class="doc-sort">
-                    <span>排序</span>
-                    <select v-model="docSort" aria-label="文档排序方式">
-                      <option value="uploaded">上传时间</option>
-                      <option value="size">文件大小</option>
-                      <option value="type">文件类型</option>
-                    </select>
-                  </label>
-                  <button
-                    class="btn small sort-dir"
-                    :title="docSortDir==='asc' ? '当前升序，点击切换为降序' : '当前降序，点击切换为升序'"
-                    @click="toggleDocSortDir">
-                    <i :data-lucide="docSortDir==='asc' ? 'arrow-up' : 'arrow-down'"></i>
-                    {{ docSortDir==='asc' ? '升序' : '降序' }}
-                  </button>
-                  <div class="view-switch" role="group" aria-label="文档显示方式">
+                  <div class="kb-top-actions">
+                    <span class="kb-busy" v-if="uploading">
+                      <i data-lucide="loader-circle"></i>
+                      正在解析
+                    </span>
+                    <div class="kb-tabs" role="tablist" aria-label="知识库内容视图">
+                      <button
+                        class="kb-tab"
+                        :class="{active:docView==='detail'}"
+                        role="tab"
+                        :aria-selected="docView==='detail'"
+                        @click="docView='detail'">
+                        <i data-lucide="file-text"></i>
+                        <span>文档</span>
+                      </button>
+                      <button
+                        class="kb-tab"
+                        :class="{active:docView==='simple'}"
+                        role="tab"
+                        :aria-selected="docView==='simple'"
+                        @click="docView='simple'">
+                        <i data-lucide="layout-grid"></i>
+                        <span>画廊</span>
+                      </button>
+                    </div>
                     <button
-                      :class="{active:docView==='detail'}"
-                      title="详细视图"
-                      aria-label="详细视图"
-                      @click="docView='detail'">
-                      <i data-lucide="list"></i>
-                    </button>
-                    <button
-                      :class="{active:docView==='simple'}"
-                      title="简洁视图"
-                      aria-label="简洁视图"
-                      @click="docView='simple'">
-                      <i data-lucide="layout-grid"></i>
+                      class="kb-icon-btn kb-icon-danger"
+                      title="删除知识库"
+                      aria-label="删除知识库"
+                      :disabled="uploading"
+                      @click="requestDeleteKnowledgeBase">
+                      <i data-lucide="trash-2"></i>
                     </button>
                   </div>
                 </div>
-              </div>
 
-              <div class="doc-list" v-if="filteredDocuments.length && docView==='detail'">
-                <div class="doc-row" v-for="doc in filteredDocuments" :key="doc.id">
-                  <span class="file-icon"><i data-lucide="file-text"></i></span>
-                  <div>
-                    <div class="doc-name" :title="doc.name">{{ doc.name }}</div>
-                    <div class="doc-meta">{{ doc.pages }} 页 · {{ doc.chunks }} 个索引块</div>
+                <div class="kb-titlebar">
+                  <div class="kb-heading">
+                    <div class="kb-heading-row">
+                      <h2>{{ currentKb.name }}</h2>
+                      <span class="kb-doc-count">{{ currentKb.documentCount }} 个文档</span>
+                    </div>
+                    <p class="kb-description" :title="currentKb.description || '暂无描述'">
+                      {{ currentKb.description || '暂无描述' }}
+                    </p>
                   </div>
-                  <span class="doc-time">{{ formatDateTime(doc.createdAt) }}</span>
-                  <span class="doc-size">{{ formatSize(doc.sizeBytes) }}</span>
-                  <button class="delete-doc" title="删除文档" aria-label="删除文档" @click="requestDeleteDocument(doc)">
-                    <i data-lucide="trash-2"></i>
-                  </button>
+                  <div class="kb-controls">
+                    <label class="doc-search kb-search">
+                      <i data-lucide="search"></i>
+                      <input
+                        v-model="docQuery"
+                        type="search"
+                        autocomplete="off"
+                        placeholder="搜索文档名称，支持 .pdf 等扩展名"
+                        aria-label="搜索文档名称">
+                      <button
+                        v-if="docQuery"
+                        type="button"
+                        class="doc-search-clear"
+                        title="清空搜索"
+                        aria-label="清空搜索"
+                        @click="docQuery=''">
+                        <i data-lucide="x"></i>
+                      </button>
+                    </label>
+                    <div class="sort-dropdown">
+                      <button
+                        type="button"
+                        class="sort-trigger doc-sort-trigger"
+                        :class="{open:openMenu==='docSort'}"
+                        :aria-expanded="openMenu==='docSort'"
+                        aria-label="文档排序方式"
+                        @click.stop="toggleMenu('docSort')">
+                        <i data-lucide="arrow-up-down"></i>
+                        <span>{{ docSortLabel }}</span>
+                        <i class="sort-chevron" data-lucide="chevron-down"></i>
+                      </button>
+                      <div class="sort-menu" v-if="openMenu==='docSort'" @click.stop>
+                        <button
+                          type="button"
+                          class="sort-option"
+                          :class="{active:docSort==='uploaded'}"
+                          @click="selectDocSort('uploaded')">
+                          <span>上传时间</span>
+                          <i v-if="docSort==='uploaded'" data-lucide="check"></i>
+                        </button>
+                        <button
+                          type="button"
+                          class="sort-option"
+                          :class="{active:docSort==='size'}"
+                          @click="selectDocSort('size')">
+                          <span>文件大小</span>
+                          <i v-if="docSort==='size'" data-lucide="check"></i>
+                        </button>
+                        <button
+                          type="button"
+                          class="sort-option"
+                          :class="{active:docSort==='type'}"
+                          @click="selectDocSort('type')">
+                          <span>文件类型</span>
+                          <i v-if="docSort==='type'" data-lucide="check"></i>
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      class="kb-icon-btn kb-sort-dir"
+                      :title="docSortDir==='asc' ? '当前升序，点击切换为降序' : '当前降序，点击切换为升序'"
+                      @click="toggleDocSortDir">
+                      <svg
+                        class="sort-dir-arrow"
+                        :class="{asc:docSortDir==='asc'}"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true">
+                        <path d="M12 5v14M5 12l7 7 7-7"></path>
+                      </svg>
+                    </button>
+                    <button class="btn kb-chat-btn" @click="chatWithCurrent">
+                      <i data-lucide="message-square-text"></i>
+                      <span>对话</span>
+                    </button>
+                    <button
+                      class="btn primary kb-add-btn"
+                      :disabled="uploading"
+                      @click="$refs.kbFile.click()">
+                      <i data-lucide="plus"></i>
+                      <span>添加文档</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div class="doc-grid" v-else-if="filteredDocuments.length">
-                <div class="doc-card" v-for="doc in filteredDocuments" :key="doc.id" :title="doc.name">
-                  <span class="file-icon"><i data-lucide="file-text"></i></span>
-                  <span class="doc-card-name">{{ doc.name }}</span>
+                <div class="kb-panel">
+                  <template v-if="filteredDocuments.length">
+                    <div class="doc-list kb-doc-list" v-if="docView==='detail'">
+                      <div class="kb-list-head" aria-hidden="true">
+                        <span></span>
+                        <span>文件名</span>
+                        <span>上传时间</span>
+                        <span>大小</span>
+                        <span></span>
+                      </div>
+                      <div class="doc-row kb-doc-row" v-for="doc in filteredDocuments" :key="doc.id">
+                        <span class="file-icon" :class="fileIconClass(doc.name)">
+                          <i data-lucide="file-text"></i>
+                        </span>
+                        <div>
+                          <div class="doc-name" :title="doc.name">{{ doc.name }}</div>
+                          <div class="doc-meta">{{ doc.pages }} 页 · {{ doc.chunks }} 个索引块</div>
+                        </div>
+                        <span class="doc-time">{{ formatDateTime(doc.createdAt) }}</span>
+                        <span class="doc-size">{{ formatSize(doc.sizeBytes) }}</span>
+                        <button class="delete-doc" title="删除文档" aria-label="删除文档" @click="requestDeleteDocument(doc)">
+                          <i data-lucide="trash-2"></i>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="doc-grid kb-gallery" v-else>
+                      <div class="doc-card" v-for="doc in filteredDocuments" :key="doc.id" :title="doc.name">
+                        <span class="file-icon" :class="fileIconClass(doc.name)">
+                          <i data-lucide="file-text"></i>
+                        </span>
+                        <span class="doc-card-name">{{ doc.name }}</span>
+                      </div>
+                    </div>
+                  </template>
+
+                  <div class="kb-empty kb-empty-search" v-else-if="documents.length">
+                    <div class="kb-empty-art">
+                      <span class="kb-empty-halo"></span>
+                      <span class="kb-empty-file"><i data-lucide="search-x"></i></span>
+                    </div>
+                    <strong>没有找到匹配的文档</strong>
+                    <p>换个名称或扩展名试试。</p>
+                    <button class="btn small" @click="docQuery=''">清空搜索</button>
+                  </div>
+
+                  <div
+                    class="kb-empty kb-empty-upload"
+                    v-else
+                    @click="$refs.kbFile.click()"
+                    @dragover.prevent
+                    @drop.prevent="uploadDropped">
+                    <div class="kb-empty-art">
+                      <span class="kb-empty-halo"></span>
+                      <span class="kb-empty-file"><i data-lucide="file-stack"></i></span>
+                    </div>
+                    <strong>知识库为空，拖拽上传</strong>
+                    <p>支持 PDF、Word、Markdown、TXT，单文件不超过 50MB</p>
+                    <button class="btn primary" @click.stop="$refs.kbFile.click()">
+                      <i data-lucide="plus"></i>
+                      选择文件
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div class="doc-empty" v-else-if="documents.length">
-                <i data-lucide="search-x"></i>
-                <strong>没有找到匹配的文档</strong>
-                换个名称或扩展名试试。
-                <button class="btn small" @click="docQuery=''">清空搜索</button>
-              </div>
-
-              <div class="doc-empty" v-else>
-                <i data-lucide="file-stack"></i>
-                <strong>还没有文档</strong>
-                添加 PDF、Word、Markdown 或 TXT 文件开始构建知识库。
-              </div>
-
-              <div
-                class="upload-zone"
-                @click="$refs.kbFile.click()"
-                @dragover.prevent
-                @drop.prevent="uploadDropped">
-                <strong>点击选择，或把文件拖到这里</strong>
-                支持 PDF / DOCX / MD / TXT，单文件不超过 50MB
+                <div
+                  class="kb-upload-strip"
+                  v-if="documents.length"
+                  @click="$refs.kbFile.click()"
+                  @dragover.prevent
+                  @drop.prevent="uploadDropped">
+                  <i data-lucide="upload-cloud"></i>
+                  <span>拖拽文件到这里，或点击上传</span>
+                  <span class="kb-upload-hint">PDF / DOCX / MD / TXT · 50MB</span>
+                </div>
               </div>
             </template>
           </template>
@@ -975,6 +1279,8 @@ createApp({
     return {
       view: 'chat',
       knowledgeBases: [],
+      kbSort: 'updated',
+      openMenu: '',
       currentKbId: null,
       documents: [],
       docQuery: '',
@@ -1017,11 +1323,31 @@ createApp({
     },
     pageTitle() {
       if (this.settingsOpen && this.currentKb) return '知识库设置';
-      return this.currentKb ? this.currentKb.name : '知识库';
+      return '知识库';
     },
     filteredDocuments() {
       return DocUtils.filterAndSortDocuments(
         this.documents, this.docQuery, this.docSort, this.docSortDir);
+    },
+    sortedKnowledgeBases() {
+      const key = this.kbSort === 'created' ? 'createdAt' : 'updatedAt';
+      return [...this.knowledgeBases].sort((left, right) => {
+        const leftTime = left[key] || left.createdAt || 0;
+        const rightTime = right[key] || right.createdAt || 0;
+        return (rightTime - leftTime)
+          || ((right.createdAt || 0) - (left.createdAt || 0))
+          || String(left.name || '').localeCompare(String(right.name || ''), 'zh-CN');
+      });
+    },
+    kbSortLabel() {
+      return this.kbSort === 'created' ? '最新创建' : '最新更新';
+    },
+    docSortLabel() {
+      return {
+        uploaded: '上传时间',
+        size: '文件大小',
+        type: '文件类型'
+      }[this.docSort] || '上传时间';
     },
     totalDocuments() {
       return this.knowledgeBases.reduce((sum, item) => sum + item.documentCount, 0);
@@ -1043,9 +1369,11 @@ createApp({
   mounted() {
     this.refresh();
     window.addEventListener('keydown', this.handleGlobalKeydown);
+    window.addEventListener('click', this.closeMenus);
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleGlobalKeydown);
+    window.removeEventListener('click', this.closeMenus);
   },
   updated() {
     this.refreshIcons();
@@ -1053,6 +1381,20 @@ createApp({
   methods: {
     refreshIcons() {
       if (window.lucide) window.lucide.createIcons();
+    },
+    closeMenus() {
+      this.openMenu = '';
+    },
+    toggleMenu(name) {
+      this.openMenu = this.openMenu === name ? '' : name;
+    },
+    selectKbSort(value) {
+      this.kbSort = value;
+      this.closeMenus();
+    },
+    selectDocSort(value) {
+      this.docSort = value;
+      this.closeMenus();
     },
     async api(url, options = {}) {
       return ApiClient.request(url, options);
@@ -1097,17 +1439,20 @@ createApp({
     showChat() {
       this.view = 'chat';
       this.scopeOpen = false;
+      this.closeMenus();
       this.$nextTick(() => this.focusQuestion());
     },
     showLibrary() {
       this.view = 'library';
       this.scopeOpen = false;
       this.settingsOpen = false;
+      this.closeMenus();
     },
     async openKnowledgeBase(id) {
       this.currentKbId = id;
       this.view = 'library';
       this.settingsOpen = false;
+      this.closeMenus();
       this.docQuery = '';
       this.docSort = 'uploaded';
       this.docSortDir = 'desc';
@@ -1128,6 +1473,7 @@ createApp({
     },
     openKbSettings() {
       if (!this.currentKb) return;
+      this.closeMenus();
       this.settingsOpen = true;
     },
     closeKbSettings() {
@@ -1136,6 +1482,10 @@ createApp({
     },
     toggleDocSortDir() {
       this.docSortDir = this.docSortDir === 'asc' ? 'desc' : 'asc';
+    },
+    fileIconClass(name) {
+      const extension = DocUtils.extensionOf(name);
+      return extension ? 'file-tone-' + extension : 'file-tone-generic';
     },
     openCreate() {
       this.createForm = { name: '', description: '' };
@@ -1155,7 +1505,9 @@ createApp({
     },
     handleGlobalKeydown(event) {
       if (event.key !== 'Escape') return;
-      if (this.confirmDialog.open) {
+      if (this.openMenu) {
+        this.closeMenus();
+      } else if (this.confirmDialog.open) {
         this.closeConfirm();
       } else if (this.showCreate) {
         this.closeCreate();

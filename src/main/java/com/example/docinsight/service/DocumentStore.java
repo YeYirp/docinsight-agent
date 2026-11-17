@@ -40,6 +40,9 @@ public class DocumentStore {
 
     private static final String KNOWLEDGE_BASE_SELECT = """
             SELECT kb.id, kb.name, kb.description, kb.created_at,
+                   (SELECT COALESCE(MAX(d.created_at), kb.created_at)
+                    FROM document d
+                    WHERE d.knowledge_base_id = kb.id) AS updated_at,
                    (SELECT COUNT(*) FROM document d
                     WHERE d.knowledge_base_id = kb.id) AS document_count,
                    (SELECT COALESCE(SUM(d.chunk_count), 0) FROM document d
@@ -76,7 +79,8 @@ public class DocumentStore {
     }
 
     public List<KnowledgeBase> listKnowledgeBases() {
-        return jdbc.query(KNOWLEDGE_BASE_SELECT + " ORDER BY kb.created_at, kb.id",
+        return jdbc.query(KNOWLEDGE_BASE_SELECT
+                        + " ORDER BY updated_at DESC, kb.created_at DESC, kb.id",
                 knowledgeBaseMapper());
     }
 
@@ -395,6 +399,7 @@ public class DocumentStore {
                 rs.getString("name"),
                 rs.getString("description"),
                 rs.getLong("created_at"),
+                rs.getLong("updated_at"),
                 rs.getInt("document_count"),
                 rs.getInt("chunk_count"));
     }
