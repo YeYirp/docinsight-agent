@@ -1,6 +1,6 @@
 # DocInsight Agent
 
-面向企业资料的本地知识问答 Agent。支持 PDF、Word、Markdown、TXT 和常见视频格式，
+面向多类型资料的本地知识问答 Agent。支持 PDF、Word、Markdown、TXT 和常见视频格式，
 文档按标题层级切分，视频通过 faster-whisper 转写为带时间戳的文本切片，再经过混合检索、
 流式生成和引用溯源返回答案。
 
