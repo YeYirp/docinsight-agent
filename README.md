@@ -11,6 +11,8 @@
 ## 特性
 
 - **文档解析**：PDF 逐页提取并保留页码，Word 按段落样式识别标题，Markdown/TXT 直接按行解析。
+- **视频知识库**：上传 MP4 / MOV / MKV / WEBM / AVI / M4V，使用 faster-whisper 转写为带时间戳的
+  文本切片；视频原文件保存在磁盘，SQLite 只保存转写内容和少量元数据。
 - **结构化切分**：按标题层级切 Chunk，保留「文档 → 章节路径 → 页码/段落」元数据，
   避免知识点被截断。
 - **混合检索**：BGE-M3 向量召回 + 关键词召回，按 0.6 / 0.25 / 0.15 加权融合；
@@ -22,7 +24,6 @@
 - **流式交互**：SSE 推送阶段进度与增量文本，同时记录耗时与 Token。
 - **知识库工作区**：左侧只有「新对话」「知识库」两个主模块；知识库支持新建、添加/删除文档，
   提问时可以选择一个或多个知识库作为检索范围。
-- **检索评测**：内置评测集，`/api/eval` 直接返回 Hit Rate@K，便于调参。
 
 ## 架构
 
@@ -86,6 +87,43 @@ $env:LLM_API_KEY="sk-xxx"
 $env:EMBEDDING_API_KEY="sk-xxx"
 ```
 
+## 视频知识库
+
+视频摄取使用成熟开源组件：[faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+做语音识别，模型常驻 worker，视频按单线程队列处理。需要 Python 3.10+：
+
+```powershell
+python -m pip install -r scripts/video-requirements.txt
+```
+
+首次处理视频时会下载 Whisper 模型。默认使用 `small` + CPU `int8`，兼顾中文效果和资源占用；
+也可以改成 `base` 降低占用，或配置 `cuda`/`float16` 提高速度。若更偏好纯 C++ 部署，可参考
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp)，接口层已与具体转写器解耦。
+国内网络可设置 `VIDEO_HF_ENDPOINT=https://hf-mirror.com`，或直接使用本地的
+`VIDEO_WHISPER_MODEL` 模型目录。
+
+当前视频分析的范围是**语音转写 + 时间戳切片**：
+
+- 视频原文件保存到 `data/media/`，不会以 BLOB 形式写入 SQLite；
+- SQLite 中只增加文件名、时长和转写 Chunk，通常每条视频只占几 KB 到几 MB 文本；
+- 转写片段沿用现有混合检索和引用溯源，引用位置显示 `00:01:23` 这样的时间；
+- 单线程任务队列避免多个 Whisper 转写同时抢占 CPU，模型只加载一次；
+- 上传接口快速返回任务 ID，页面轮询转写状态，不会把长视频转写卡在一个 HTTP 请求里；
+- 可选视觉层可以参考 [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)
+  做镜头切片，再接入 OCR；当前版本默认只处理语音，避免默认引入重型视觉模型。
+
+如果视频没有语音，当前版本会明确报错。需要识别幻灯片、界面文字或画面内容时，再在
+`VideoTranscriber` 之后增加关键帧 OCR 管线即可。
+
+## 性能与资源
+
+- SQLite 使用 HikariCP 复用连接，`vec0` 扩展只在物理连接建立时加载一次；
+- 切片和向量写入使用批量 JDBC，避免逐条查询 `rowid` 和逐条往返；
+- Embedding 默认按 32 条一批发送，缺失向量按批生成、写回；
+- FTS5 使用 contentless 索引，不再在 FTS 表里重复保存切片正文和 ID；
+- PDF / DOCX / 文本从上传流直接解析，少保留一份完整文件副本；
+- 视频模型 worker 空闲 10 分钟后释放模型内存，下一次视频再按需加载。
+
 ## 配置
 
 | 环境变量 | 默认值 | 说明 |
@@ -100,9 +138,24 @@ $env:EMBEDDING_API_KEY="sk-xxx"
 | `EMBEDDING_BASE_URL` | `https://api.siliconflow.cn/v1` | Embedding 服务地址 |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | 向量模型 |
 | `EMBEDDING_DIMENSION` | `1024` | 向量维度，必须与 `chunk_vector` 表一致 |
+| `EMBEDDING_BATCH_SIZE` | `32` | 一次 Embedding 请求的最大文本条数 |
 | `DATABASE_URL` | `jdbc:sqlite:./data/docinsight.db` | SQLite 数据文件 |
 | `SQLITE_VEC_EXTENSION` | 空 | 可选：使用外部 vec0 扩展路径 |
+| `DB_POOL_SIZE` | `4` | SQLite 连接池上限 |
+| `TOMCAT_MAX_THREADS` | `32` | Web 线程上限，桌面单机建议保持默认 |
 | `RAG_TOP_K` | `4` | 检索返回块数 |
+| `VIDEO_ENABLED` | `true` | 是否启用视频摄取 |
+| `VIDEO_PYTHON_COMMAND` | 自动查找 | Python 可执行文件，例如 `python` |
+| `VIDEO_WHISPER_MODEL` | `small` | faster-whisper 模型名或本地模型路径 |
+| `VIDEO_WHISPER_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
+| `VIDEO_WHISPER_COMPUTE_TYPE` | `int8` | CPU 建议 `int8`，GPU 可用 `float16` |
+| `VIDEO_WHISPER_LANGUAGE` | `auto` | 转写语言，中文可填 `zh` |
+| `VIDEO_HF_ENDPOINT` | 空 | 模型下载镜像，例如 `https://hf-mirror.com` |
+| `VIDEO_MAX_SIZE_MB` | `500` | 单个视频大小上限 |
+| `VIDEO_MAX_DURATION_MINUTES` | `120` | 单个视频时长上限 |
+| `VIDEO_STORAGE_DIR` | `./data/media` | 视频原文件保存目录 |
+| `VIDEO_MODEL_DIR` | `./data/models` | Whisper 模型缓存目录 |
+| `VIDEO_WORKER_IDLE_MINUTES` | `10` | 转写 worker 空闲多久后释放模型内存，0 表示常驻 |
 
 ## API
 
@@ -113,12 +166,13 @@ $env:EMBEDDING_API_KEY="sk-xxx"
 | `GET` | `/api/knowledge-bases/{id}` | 知识库详情 |
 | `DELETE` | `/api/knowledge-bases/{id}` | 删除知识库及其文档 |
 | `GET` | `/api/knowledge-bases/{id}/documents` | 知识库文档列表 |
-| `POST` | `/api/knowledge-bases/{id}/documents` | 向知识库上传文档（multipart，字段名 `file`） |
-| `POST` | `/api/docs/upload` | 上传 PDF / DOCX / MD / TXT（multipart，字段名 `file`） |
+| `POST` | `/api/knowledge-bases/{id}/documents` | 向知识库上传文档或视频（multipart，字段名 `file`） |
+| `POST` | `/api/docs/upload` | 上传文档或视频（multipart，字段名 `file`）；视频返回异步任务 ID |
 | `GET` | `/api/docs` | 文档列表 |
 | `DELETE` | `/api/docs/{id}` | 删除文档及其索引 |
+| `GET` | `/api/docs/{id}/media` | 视频原文件（支持 HTTP Range，可拖动播放） |
+| `GET` | `/api/ingestion-jobs/{id}` | 查询异步视频转写任务状态 |
 | `POST` | `/api/ask` | SSE 问答；可传 `knowledgeBaseIds` 数组选择多个知识库 |
-| `GET` | `/api/eval?topK=3` | 检索评测，返回 Hit Rate 与逐题明细 |
 | `GET` | `/api/health` | 健康检查 |
 | `GET` | `/api/metrics` | 请求数、Token、平均耗时 |
 
@@ -139,21 +193,6 @@ $env:EMBEDDING_API_KEY="sk-xxx"
   "location":"第 3 页","snippet":"系统默认每日凌晨 2 点执行一次全量备份…","score":0.82}]
 ```
 
-## 评测
-
-内置 12 条业务问题（`src/main/resources/eval/questions.json`），每条给出期望关键词，
-TopK 中任意一块命中即算召回：
-
-```bash
-curl "http://localhost:8080/api/eval?topK=3"
-```
-
-返回 `hitRate`、`hits`、`cases` 与逐题明细。想扩到 50+ 题，直接往 JSON 里加即可；
-建议按文档章节均匀取样，覆盖「定义类、流程类、故障类」三种问法。
-
-> 说明：这里只评测检索层（Hit Rate@K）。生成层指标（忠实度）需要人工或模型打分，
-> 本仓库不内置，避免给出没有依据的数字。
-
 ## 项目结构
 
 ```
@@ -170,8 +209,7 @@ src/main/java/com/example/docinsight
     ├── EmbeddingClient   向量化（可选）
     ├── RetrievalService  混合检索与融合
     ├── Tools             Function Calling 工具
-    ├── AgentService      编排 + SSE + 引用
-    └── EvalService       Hit Rate@K
+    └── AgentService      编排 + SSE + 引用
 ```
 
 ## 设计取舍

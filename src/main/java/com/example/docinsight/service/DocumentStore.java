@@ -4,19 +4,24 @@ import com.example.docinsight.model.Chunk;
 import com.example.docinsight.model.DocumentInfo;
 import com.example.docinsight.model.KnowledgeBase;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -108,7 +113,8 @@ public class DocumentStore {
 
     public List<DocumentInfo> documentsForKnowledgeBase(String knowledgeBaseId) {
         return jdbc.query("""
-                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes, created_at
+                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes, created_at,
+                               (media_path IS NOT NULL) AS has_media, duration_ms
                         FROM document
                         WHERE knowledge_base_id = ?
                         ORDER BY created_at DESC, name, id
@@ -130,13 +136,25 @@ public class DocumentStore {
 
     @Transactional
     public void save(DocumentInfo info, List<Chunk> chunks) {
+        doSave(info, chunks, null, info.durationMs());
+    }
+
+    @Transactional
+    public void save(DocumentInfo info, List<Chunk> chunks,
+                     String mediaPath, long durationMs) {
+        doSave(info, chunks, mediaPath, durationMs);
+    }
+
+    private void doSave(DocumentInfo info, List<Chunk> chunks,
+                        String mediaPath, long durationMs) {
         if (info.knowledgeBaseId() != null && getKnowledgeBase(info.knowledgeBaseId()) == null) {
             throw new IllegalArgumentException("知识库不存在");
         }
         jdbc.update("""
                         INSERT INTO document(
-                            id, knowledge_base_id, name, pages, chunk_count, size_bytes, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                            id, knowledge_base_id, name, pages, chunk_count, size_bytes, created_at,
+                            media_path, duration_ms)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 info.id(),
                 info.knowledgeBaseId(),
@@ -144,31 +162,46 @@ public class DocumentStore {
                 info.pages(),
                 info.chunks(),
                 info.sizeBytes(),
-                info.createdAt());
-        for (int index = 0; index < chunks.size(); index++) {
-            Chunk chunk = chunks.get(index);
-            jdbc.update("""
-                            INSERT INTO chunk(
-                                id, document_id, chunk_order, doc_name, heading, text, location, search_terms)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                    chunk.id(),
-                    chunk.docId(),
-                    index,
-                    chunk.docName(),
-                    chunk.heading(),
-                    chunk.text(),
-                    chunk.location(),
-                    buildSearchTerms(chunk.heading(), chunk.text()));
-            if (chunk.vector() != null) {
-                replaceVector(rowId(chunk.id()), chunk.vector());
-            }
+                info.createdAt(),
+                mediaPath,
+                durationMs);
+        jdbc.batchUpdate("""
+                        INSERT INTO chunk(
+                            id, document_id, chunk_order, doc_name, heading, text, location, search_terms)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement statement, int index)
+                            throws SQLException {
+                        Chunk chunk = chunks.get(index);
+                        statement.setString(1, chunk.id());
+                        statement.setString(2, chunk.docId());
+                        statement.setInt(3, index);
+                        statement.setString(4, chunk.docName());
+                        statement.setString(5, chunk.heading());
+                        statement.setString(6, chunk.text());
+                        statement.setString(7, chunk.location());
+                        statement.setString(8, buildSearchTerms(chunk.heading(), chunk.text()));
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return chunks.size();
+                    }
+                });
+        List<Chunk> withVectors = chunks.stream()
+                .filter(chunk -> chunk.vector() != null)
+                .toList();
+        if (!withVectors.isEmpty()) {
+            updateVectors(withVectors);
         }
     }
 
     public List<DocumentInfo> list() {
         return jdbc.query("""
-                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes, created_at
+                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes, created_at,
+                               (media_path IS NOT NULL) AS has_media, duration_ms
                         FROM document
                         ORDER BY created_at DESC, name, id
                         """,
@@ -205,16 +238,25 @@ public class DocumentStore {
     }
 
     public List<Chunk> chunksWithoutVectors(Collection<String> docIds) {
+        return chunksWithoutVectors(docIds, -1);
+    }
+
+    public List<Chunk> chunksWithoutVectors(Collection<String> docIds, int limit) {
         Scope scope = scope(docIds);
-        return jdbc.query("""
+        String sql = """
                         SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location
                         FROM chunk c
                         LEFT JOIN chunk_vector v ON v.chunk_key = c.rowid
                         WHERE v.chunk_key IS NULL AND %s
                         ORDER BY c.document_id, c.chunk_order
-                        """.formatted(scope.sql()),
-                chunkMapper(),
-                scope.args().toArray());
+                        """.formatted(scope.sql());
+        if (limit > 0) {
+            sql += " LIMIT ?";
+            List<Object> args = new ArrayList<>(scope.args());
+            args.add(limit);
+            return jdbc.query(sql, chunkMapper(), args.toArray());
+        }
+        return jdbc.query(sql, chunkMapper(), scope.args().toArray());
     }
 
     public boolean hasChunks(Collection<String> docIds) {
@@ -233,6 +275,20 @@ public class DocumentStore {
         jdbc.update("DELETE FROM document WHERE id = ?", docId);
     }
 
+    public String mediaPath(String docId) {
+        return jdbc.query(
+                "SELECT media_path FROM document WHERE id = ? AND media_path IS NOT NULL",
+                rs -> rs.next() ? rs.getString(1) : null,
+                docId);
+    }
+
+    public List<String> mediaPathsForKnowledgeBase(String knowledgeBaseId) {
+        return jdbc.queryForList("""
+                SELECT media_path FROM document
+                WHERE knowledge_base_id = ? AND media_path IS NOT NULL
+                """, String.class, knowledgeBaseId);
+    }
+
     public int totalChunks() {
         Long count = jdbc.queryForObject("SELECT COUNT(*) FROM chunk", Long.class);
         return count == null ? 0 : count.intValue();
@@ -241,11 +297,48 @@ public class DocumentStore {
     /** 向量写入 chunk_vector，不在 chunk 表或 Java 缓存中保存副本。 */
     @Transactional
     public void updateVectors(List<Chunk> withVectors) {
-        for (Chunk chunk : withVectors) {
-            if (chunk.vector() != null) {
-                replaceVector(rowId(chunk.id()), chunk.vector());
-            }
+        List<Chunk> vectors = withVectors.stream()
+                .filter(chunk -> chunk.vector() != null)
+                .toList();
+        if (vectors.isEmpty()) {
+            return;
         }
+        Map<String, Long> rowIds = rowIds(vectors.stream().map(Chunk::id).toList());
+        List<Chunk> valid = vectors.stream()
+                .filter(chunk -> rowIds.containsKey(chunk.id()))
+                .toList();
+        if (valid.isEmpty()) {
+            return;
+        }
+        jdbc.batchUpdate("DELETE FROM chunk_vector WHERE chunk_key = ?",
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement statement, int index)
+                            throws SQLException {
+                        statement.setLong(1, rowIds.get(valid.get(index).id()));
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return valid.size();
+                    }
+                });
+        jdbc.batchUpdate(
+                "INSERT INTO chunk_vector(chunk_key, embedding) VALUES (?, vec_f32(?))",
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement statement, int index)
+                            throws SQLException {
+                        Chunk chunk = valid.get(index);
+                        statement.setLong(1, rowIds.get(chunk.id()));
+                        statement.setBytes(2, toVectorBlob(chunk.vector()));
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return valid.size();
+                    }
+                });
     }
 
     public List<VectorCandidate> vectorCandidates(
@@ -379,18 +472,18 @@ public class DocumentStore {
                 .toList();
     }
 
-    private void replaceVector(long chunkKey, double[] vector) {
-        jdbc.update("DELETE FROM chunk_vector WHERE chunk_key = ?", chunkKey);
-        jdbc.update("INSERT INTO chunk_vector(chunk_key, embedding) VALUES (?, vec_f32(?))",
-                chunkKey, toVectorBlob(vector));
-    }
-
-    private long rowId(String chunkId) {
-        Long rowId = jdbc.queryForObject("SELECT rowid FROM chunk WHERE id = ?", Long.class, chunkId);
-        if (rowId == null) {
-            throw new IllegalArgumentException("切片不存在: " + chunkId);
+    private Map<String, Long> rowIds(Collection<String> chunkIds) {
+        if (chunkIds == null || chunkIds.isEmpty()) {
+            return Map.of();
         }
-        return rowId;
+        List<String> ids = List.copyOf(chunkIds);
+        Map<String, Long> result = new HashMap<>(ids.size());
+        jdbc.query("SELECT id, rowid FROM chunk WHERE id IN (" + placeholders(ids.size()) + ")",
+                rs -> {
+                    result.put(rs.getString("id"), rs.getLong("rowid"));
+                },
+                ids.toArray());
+        return result;
     }
 
     private RowMapper<KnowledgeBase> knowledgeBaseMapper() {
@@ -412,7 +505,9 @@ public class DocumentStore {
                 rs.getInt("pages"),
                 rs.getInt("chunk_count"),
                 rs.getLong("size_bytes"),
-                rs.getLong("created_at"));
+                rs.getLong("created_at"),
+                rs.getBoolean("has_media"),
+                rs.getLong("duration_ms"));
     }
 
     private RowMapper<Chunk> chunkMapper() {

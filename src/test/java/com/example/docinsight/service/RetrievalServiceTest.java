@@ -19,7 +19,7 @@ class RetrievalServiceTest {
 
     private final AiProperties props = new AiProperties(
             new AiProperties.Ai("http://localhost", "", "test", 30, 3),
-            new AiProperties.Embedding("http://localhost", "", "bge", 3),
+            new AiProperties.Embedding("http://localhost", "", "bge", 3, 32),
             new AiProperties.Rag(2, 200, 40));
 
     @Test
@@ -51,7 +51,7 @@ class RetrievalServiceTest {
         Chunk backup = new Chunk(
                 "d1#0", "d1", "manual.md", "备份策略", "每日执行全量备份", "第 1 行", null);
         when(store.hasChunks(null)).thenReturn(true);
-        when(store.chunksWithoutVectors(null)).thenReturn(List.of());
+        when(store.chunksWithoutVectors(null, 32)).thenReturn(List.of());
         when(store.keywordCandidates(anySet(), isNull(), eq(20))).thenReturn(List.of());
         when(store.vectorCandidates(any(double[].class), isNull(), eq(20)))
                 .thenReturn(List.of(new DocumentStore.VectorCandidate(backup, 0.1)));

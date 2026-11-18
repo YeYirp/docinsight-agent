@@ -321,6 +321,8 @@
   .file-icon .lucide{width:17px;height:17px}
   .doc-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .doc-meta{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .doc-play{margin-left:8px;color:var(--green-dark);font-weight:600;text-decoration:none}
+  .doc-play:hover{text-decoration:underline}
   .doc-time{font-size:12.5px;color:var(--muted);white-space:nowrap}
   .doc-size{font-size:12.5px;color:var(--faint);white-space:nowrap}
   .delete-doc{
@@ -497,6 +499,9 @@
   .file-tone-docx{background:#edf4ff;color:#3e72b5}
   .file-tone-md{background:#f0f4f1;color:#4f6f5c}
   .file-tone-txt{background:#f3f5f2;color:#66726b}
+  .file-tone-mp4,.file-tone-mov,.file-tone-mkv,.file-tone-webm,.file-tone-avi,.file-tone-m4v{
+    background:#fff4e8;color:#b97528;
+  }
   .file-tone-generic{background:#f0f3f0;color:#58645d}
   .kb-gallery{padding:18px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
   .kb-gallery .doc-card{min-height:140px;background:#fbfcfb}
@@ -848,12 +853,7 @@
         </div>
 
         <div class="chat-toolbar">
-          <button class="btn small ghost" @click="runEval">
-            <i data-lucide="gauge"></i>
-            运行检索评测
-          </button>
-          <span v-if="evalResult">Hit Rate@{{ evalResult.topK }}：{{ (evalResult.hitRate*100).toFixed(0) }}%（{{ evalResult.hits }}/{{ evalResult.cases }}）</span>
-          <span v-else>当前回答支持引用溯源与多知识库混合检索</span>
+          <span>当前回答支持引用溯源与多知识库混合检索</span>
         </div>
 
         <div class="composer-wrap">
@@ -988,7 +988,7 @@
                   <div class="kb-top-actions">
                     <span class="kb-busy" v-if="uploading">
                       <i data-lucide="loader-circle"></i>
-                      正在解析
+                      {{ uploadingText || '正在解析' }}
                     </span>
                     <div class="kb-tabs" role="tablist" aria-label="知识库内容视图">
                       <button
@@ -1131,7 +1131,18 @@
                         </span>
                         <div>
                           <div class="doc-name" :title="doc.name">{{ doc.name }}</div>
-                          <div class="doc-meta">{{ doc.pages }} 页 · {{ doc.chunks }} 个索引块</div>
+                          <div class="doc-meta">
+                            <template v-if="isVideo(doc.name)">
+                              {{ formatDuration(doc.durationMs) }} · {{ doc.chunks }} 个索引块
+                              <a
+                                class="doc-play"
+                                :href="'/api/docs/' + doc.id + '/media'"
+                                target="_blank"
+                                rel="noopener"
+                                @click.stop>播放</a>
+                            </template>
+                            <template v-else>{{ doc.pages }} 页 · {{ doc.chunks }} 个索引块</template>
+                          </div>
                         </div>
                         <span class="doc-time">{{ formatDateTime(doc.createdAt) }}</span>
                         <span class="doc-size">{{ formatSize(doc.sizeBytes) }}</span>
@@ -1172,7 +1183,7 @@
                       <span class="kb-empty-file"><i data-lucide="file-stack"></i></span>
                     </div>
                     <strong>知识库为空，拖拽上传</strong>
-                    <p>支持 PDF、Word、Markdown、TXT，单文件不超过 50MB</p>
+                    <p>支持 PDF、Word、Markdown、TXT 和常见视频格式；视频最大 500MB</p>
                     <button class="btn primary" @click.stop="$refs.kbFile.click()">
                       <i data-lucide="plus"></i>
                       选择文件
@@ -1188,7 +1199,7 @@
                   @drop.prevent="uploadDropped">
                   <i data-lucide="upload-cloud"></i>
                   <span>拖拽文件到这里，或点击上传</span>
-                  <span class="kb-upload-hint">PDF / DOCX / MD / TXT · 50MB</span>
+                  <span class="kb-upload-hint">PDF / DOCX / MD / TXT / 视频 · 最大 500MB</span>
                 </div>
               </div>
             </template>
@@ -1198,7 +1209,7 @@
     </div>
   </main>
 
-  <input ref="kbFile" type="file" accept=".pdf,.docx,.md,.txt" multiple style="display:none" @change="uploadSelected">
+  <input ref="kbFile" type="file" accept=".pdf,.docx,.md,.txt,.mp4,.mov,.mkv,.webm,.avi,.m4v" multiple style="display:none" @change="uploadSelected">
 
   <div class="modal-backdrop" v-if="showCreate" @click.self="closeCreate">
     <form class="modal" @submit.prevent="createKnowledgeBase">
@@ -1294,10 +1305,10 @@ createApp({
       question: '',
       busy: false,
       stages: [],
-      evalResult: null,
       scopeOpen: false,
       loading: false,
       uploading: false,
+      uploadingText: '',
       creating: false,
       showCreate: false,
       createForm: { name: '', description: '' },
@@ -1625,23 +1636,46 @@ createApp({
       this.uploading = true;
       let uploaded = 0;
       let lastError = '';
-      for (const file of files) {
-        const form = new FormData();
-        form.append('file', file);
-        try {
-          await this.api('/api/knowledge-bases/' + this.currentKb.id + '/documents', {
-            method: 'POST',
-            body: form
-          });
-          uploaded++;
-        } catch (error) {
-          lastError = file.name + '：' + error.message;
+      try {
+        for (const file of files) {
+          const form = new FormData();
+          form.append('file', file);
+          this.uploadingText = DocUtils.isVideo(file.name)
+            ? '正在上传视频' : '正在解析文档';
+          try {
+            const result = await this.api(
+              '/api/knowledge-bases/' + this.currentKb.id + '/documents',
+              { method: 'POST', body: form });
+            if (result && result.jobId) {
+              this.uploadingText = result.stage || '等待视频转写';
+              await this.waitForVideoJob(result.jobId);
+              await this.loadKnowledgeBases();
+            }
+            uploaded++;
+          } catch (error) {
+            lastError = file.name + '：' + error.message;
+          }
         }
+      } finally {
+        this.uploading = false;
+        this.uploadingText = '';
       }
       await this.loadKnowledgeBases();
-      this.uploading = false;
-      if (uploaded) this.notify('已添加 ' + uploaded + ' 篇文档');
+      if (uploaded) this.notify('已添加 ' + uploaded + ' 个文件');
       if (lastError) this.notify(lastError, 'error');
+    },
+    async waitForVideoJob(jobId) {
+      const deadline = Date.now() + 2 * 60 * 60 * 1000;
+      while (Date.now() < deadline) {
+        const job = await this.api('/api/ingestion-jobs/' + jobId);
+        if (job.stage) this.uploadingText = job.stage;
+        if (job.status === 'DONE') return job;
+        if (job.status === 'FAILED') {
+          throw new Error(job.error || '视频处理失败');
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      throw new Error('视频处理超时');
     },
     toggleScope(id) {
       if (this.selectedKbIds.includes(id)) {
@@ -1675,13 +1709,6 @@ createApp({
     },
     toggleCitation(message, index) {
       message.open = message.open === index ? null : index;
-    },
-    async runEval() {
-      try {
-        this.evalResult = await this.api('/api/eval?topK=3');
-      } catch (error) {
-        this.notify(error.message, 'error');
-      }
     },
     async ask() {
       const text = this.question.trim();
@@ -1766,6 +1793,12 @@ createApp({
     },
     formatDateTime(timestamp) {
       return DocUtils.formatDateTime(timestamp);
+    },
+    isVideo(name) {
+      return DocUtils.isVideo(name);
+    },
+    formatDuration(milliseconds) {
+      return DocUtils.formatDuration(milliseconds);
     },
     notify(message, type = 'success') {
       if (!message) return;

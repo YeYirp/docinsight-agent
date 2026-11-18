@@ -34,7 +34,7 @@ public class SqliteDataSource extends AbstractDataSource {
     private Connection openConnection() throws SQLException {
         SQLiteConfig config = new SQLiteConfig();
         config.enableLoadExtension(true);
-        config.setBusyTimeout(5_000);
+        config.setBusyTimeout(10_000);
         config.setJournalMode(SQLiteConfig.JournalMode.WAL);
         config.setSynchronous(SQLiteConfig.SynchronousMode.NORMAL);
 
@@ -42,6 +42,13 @@ public class SqliteDataSource extends AbstractDataSource {
         try {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("PRAGMA foreign_keys = ON");
+                statement.execute("PRAGMA cache_size = -2048");
+                statement.execute("PRAGMA journal_size_limit = 67108864");
+                try {
+                    statement.execute("PRAGMA mmap_size = 33554432");
+                } catch (SQLException ignored) {
+                    // Some SQLite builds disable memory-mapped I/O.
+                }
             }
             SqliteExtensionLoader.load(connection, extension);
             return connection;

@@ -11,7 +11,13 @@ public enum DocumentFormat {
     PDF(".pdf", "PDF"),
     DOCX(".docx", "DOCX"),
     MARKDOWN(".md", "MD"),
-    TEXT(".txt", "TXT");
+    TEXT(".txt", "TXT"),
+    MP4(".mp4", "MP4"),
+    MOV(".mov", "MOV"),
+    MKV(".mkv", "MKV"),
+    WEBM(".webm", "WEBM"),
+    AVI(".avi", "AVI"),
+    M4V(".m4v", "M4V");
 
     private final String extension;
     private final String label;
@@ -27,6 +33,13 @@ public enum DocumentFormat {
 
     public String label() {
         return label;
+    }
+
+    public boolean isVideo() {
+        return switch (this) {
+            case MP4, MOV, MKV, WEBM, AVI, M4V -> true;
+            default -> false;
+        };
     }
 
     public static Optional<DocumentFormat> fromFilename(String filename) {

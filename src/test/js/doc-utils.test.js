@@ -47,4 +47,8 @@ test("格式化函数保持原有输出", () => {
   assert.equal(DocUtils.formatDateTime(0), "—");
   assert.equal(DocUtils.extensionOf("archive.tar.gz"), "gz");
   assert.equal(DocUtils.extensionOf("README"), "");
+  assert.equal(DocUtils.isVideo("demo.MP4"), true);
+  assert.equal(DocUtils.isVideo("manual.pdf"), false);
+  assert.equal(DocUtils.formatDuration(3723000), "01:02:03");
+  assert.equal(DocUtils.formatDuration(65000), "01:05");
 });

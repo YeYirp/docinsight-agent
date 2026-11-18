@@ -18,6 +18,10 @@
     return index > 0 && index < name.length - 1 ? name.slice(index + 1).toLowerCase() : "";
   }
 
+  function isVideo(name) {
+    return ["mp4", "mov", "mkv", "webm", "avi", "m4v"].includes(extensionOf(name));
+  }
+
   function normalizeQuery(query) {
     return String(query || "").trim().toLowerCase();
   }
@@ -67,13 +71,24 @@
     return timestamp ? dateTimeFormatter.format(timestamp) : "—";
   }
 
+  function formatDuration(milliseconds) {
+    const total = Math.max(0, Math.floor((milliseconds || 0) / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const mmss = String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+    return hours > 0 ? String(hours).padStart(2, "0") + ":" + mmss : mmss;
+  }
+
   return {
     extensionOf,
+    isVideo,
     matchesQuery,
     sortDocuments,
     filterAndSortDocuments,
     formatSize,
     formatDate,
-    formatDateTime
+    formatDateTime,
+    formatDuration
   };
 });

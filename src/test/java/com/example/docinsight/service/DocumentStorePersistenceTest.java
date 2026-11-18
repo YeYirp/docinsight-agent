@@ -112,9 +112,104 @@ class DocumentStorePersistenceTest {
         assertThat(jdbc.queryForObject(
                 "SELECT created_at FROM document WHERE id = 'legacy'", Long.class))
                 .isPositive();
+        assertThat(jdbc.queryForList(
+                "SELECT name FROM pragma_table_info('document')", String.class))
+                .contains("media_path", "duration_ms");
         List<DocumentInfo> legacyDocuments = new DocumentStore(jdbc).list();
         assertThat(legacyDocuments).hasSize(1);
         assertThat(legacyDocuments.get(0).createdAt()).isPositive();
+    }
+
+    @Test
+    void persistsMediaMetadataWithoutStoringVideoBytes() throws Exception {
+        Path dataDirectory = Path.of(
+                "target", "test-data", "media-" + UUID.randomUUID());
+        Path extension = SqliteExtensionLoader.resolve(dataDirectory, "");
+        String file = dataDirectory.resolve("docinsight.db").toAbsolutePath()
+                .toString().replace('\\', '/');
+        DataSource dataSource = new SqliteDataSource("jdbc:sqlite:" + file, extension);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        initializeSchema(dataSource, jdbc);
+
+        DocumentStore store = new DocumentStore(jdbc);
+        KnowledgeBase knowledgeBase = store.createKnowledgeBase("视频库", "");
+        DocumentInfo info = new DocumentInfo(
+                "video1", "demo.mp4", knowledgeBase.id(), 1, 1, 2048,
+                System.currentTimeMillis(), true, 65_000);
+        store.save(info,
+                List.of(new Chunk("video1#0", "video1", "demo.mp4",
+                        "视频语音转写", "视频第一段内容", "00:05", null)),
+                "video1.mp4", 65_000);
+
+        DocumentInfo restored = new DocumentStore(new JdbcTemplate(dataSource))
+                .documentsForKnowledgeBase(knowledgeBase.id())
+                .get(0);
+
+        assertThat(restored.media()).isTrue();
+        assertThat(restored.durationMs()).isEqualTo(65_000);
+        assertThat(new DocumentStore(new JdbcTemplate(dataSource)).mediaPath("video1"))
+                .isEqualTo("video1.mp4");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM document WHERE media_path = 'video1.mp4'", Long.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void migratesLegacyFtsWithoutLosingKeywordSearch() throws Exception {
+        Path dataDirectory = Path.of(
+                "target", "test-data", "fts-migration-" + UUID.randomUUID());
+        Path extension = SqliteExtensionLoader.resolve(dataDirectory, "");
+        String file = dataDirectory.resolve("docinsight.db").toAbsolutePath()
+                .toString().replace('\\', '/');
+        DataSource dataSource = new SqliteDataSource("jdbc:sqlite:" + file, extension);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        initializeSchema(dataSource, jdbc);
+
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_ai");
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_ad");
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_au");
+        jdbc.execute("DROP TABLE chunk_fts");
+        jdbc.execute("""
+                CREATE VIRTUAL TABLE chunk_fts USING fts5(
+                    chunk_id UNINDEXED,
+                    document_id UNINDEXED,
+                    search_terms,
+                    tokenize = 'unicode61'
+                )
+                """);
+        jdbc.update("""
+                INSERT INTO knowledge_base(id, name, name_key, description, created_at)
+                VALUES ('kb-fts', '旧索引', '旧索引', '', 1)
+                """);
+        jdbc.update("""
+                INSERT INTO document(
+                    id, knowledge_base_id, name, pages, chunk_count, size_bytes, created_at)
+                VALUES ('doc-fts', 'kb-fts', 'manual.md', 1, 1, 10, 1)
+                """);
+        jdbc.update("""
+                INSERT INTO chunk(
+                    id, document_id, chunk_order, doc_name, heading, text, location, search_terms)
+                VALUES ('doc-fts#0', 'doc-fts', 0, 'manual.md', '备份策略',
+                        '每日执行全量备份', '第 1 行', '备份 策略 每日 执行 全量')
+                """);
+        jdbc.update("""
+                INSERT INTO chunk_fts(rowid, chunk_id, document_id, search_terms)
+                SELECT rowid, id, document_id, search_terms FROM chunk WHERE id = 'doc-fts#0'
+                """);
+
+        SqliteSchema.initialize(dataSource, jdbc, 3);
+
+        String ddl = jdbc.queryForObject(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chunk_fts'",
+                String.class);
+        assertThat(ddl).contains("contentless_delete");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM chunk_fts WHERE chunk_fts MATCH '备份'", Long.class))
+                .isEqualTo(1);
+        assertThat(new DocumentStore(jdbc).keywordCandidates(
+                Set.of("备份"), Set.of("doc-fts"), 10))
+                .extracting(candidate -> candidate.chunk().id())
+                .contains("doc-fts#0");
     }
 
     private void initializeSchema(DataSource dataSource, JdbcTemplate jdbc) {

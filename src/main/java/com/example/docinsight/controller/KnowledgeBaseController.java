@@ -3,8 +3,12 @@ package com.example.docinsight.controller;
 import com.example.docinsight.model.CreateKnowledgeBaseInput;
 import com.example.docinsight.model.DocumentInfo;
 import com.example.docinsight.model.KnowledgeBase;
+import com.example.docinsight.model.VideoIngestionJob;
+import com.example.docinsight.service.DocumentFormat;
 import com.example.docinsight.service.DocumentIngestionService;
 import com.example.docinsight.service.DocumentStore;
+import com.example.docinsight.service.VideoIngestionJobService;
+import com.example.docinsight.service.VideoStorage;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -31,10 +35,15 @@ public class KnowledgeBaseController {
 
     private final DocumentStore store;
     private final DocumentIngestionService ingestion;
+    private final VideoIngestionJobService videoJobs;
+    private final VideoStorage videoStorage;
 
-    public KnowledgeBaseController(DocumentStore store, DocumentIngestionService ingestion) {
+    public KnowledgeBaseController(DocumentStore store, DocumentIngestionService ingestion,
+                                   VideoIngestionJobService videoJobs, VideoStorage videoStorage) {
         this.store = store;
         this.ingestion = ingestion;
+        this.videoJobs = videoJobs;
+        this.videoStorage = videoStorage;
     }
 
     @GetMapping
@@ -56,7 +65,9 @@ public class KnowledgeBaseController {
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable String id) {
         KnowledgeBase existing = requireKnowledgeBase(id);
+        List<String> mediaPaths = store.mediaPathsForKnowledgeBase(id);
         store.removeKnowledgeBase(id);
+        mediaPaths.forEach(videoStorage::delete);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("deleted", id);
         body.put("documents", existing.documentCount());
@@ -70,17 +81,35 @@ public class KnowledgeBaseController {
     }
 
     @PostMapping(value = "/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Map<String, Object> upload(@PathVariable String id,
-                                      @RequestParam("file") MultipartFile file) throws IOException {
+    public ResponseEntity<Map<String, Object>> upload(@PathVariable String id,
+                                                       @RequestParam("file") MultipartFile file)
+            throws IOException {
         requireKnowledgeBase(id);
+        if (DocumentFormat.fromFilename(file.getOriginalFilename())
+                .filter(DocumentFormat::isVideo).isPresent()) {
+            VideoIngestionJob job = videoJobs.submit(file, id);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("async", true);
+            body.put("jobId", job.id());
+            body.put("docId", job.docId());
+            body.put("name", job.name());
+            body.put("knowledgeBaseId", id);
+            body.put("status", job.status());
+            body.put("stage", job.stage());
+            return ResponseEntity.accepted().body(body);
+        }
+
         DocumentInfo info = ingestion.ingest(file, id);
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("async", false);
         body.put("docId", info.id());
         body.put("name", info.name());
         body.put("knowledgeBaseId", info.knowledgeBaseId());
         body.put("pages", info.pages());
         body.put("chunks", info.chunks());
-        return body;
+        body.put("media", info.media());
+        body.put("durationMs", info.durationMs());
+        return ResponseEntity.ok(body);
     }
 
     private KnowledgeBase requireKnowledgeBase(String id) {

@@ -10,8 +10,11 @@ import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,18 +43,24 @@ public class DocumentParser {
     };
 
     public Parsed parse(String filename, byte[] bytes) throws IOException {
+        return parse(filename, new ByteArrayInputStream(bytes));
+    }
+
+    public Parsed parse(String filename, InputStream input) throws IOException {
         DocumentFormat format = DocumentFormat.fromFilename(filename).orElse(DocumentFormat.TEXT);
         return switch (format) {
-            case PDF -> parsePdf(filename, bytes);
-            case DOCX -> parseDocx(filename, bytes);
-            case MARKDOWN, TEXT -> parseText(filename, bytes);
+            case PDF -> parsePdf(filename, input);
+            case DOCX -> parseDocx(filename, input);
+            case MARKDOWN, TEXT -> parseText(filename, input);
+            case MP4, MOV, MKV, WEBM, AVI, M4V ->
+                    throw new IllegalArgumentException("视频文件需要走语音转写流程");
         };
     }
 
-    private Parsed parsePdf(String filename, byte[] bytes) throws IOException {
+    private Parsed parsePdf(String filename, InputStream input) throws IOException {
         List<Block> blocks = new ArrayList<>();
         int pages;
-        try (PDDocument document = PDDocument.load(bytes)) {
+        try (PDDocument document = PDDocument.load(input)) {
             pages = document.getNumberOfPages();
             PDFTextStripper stripper = new PDFTextStripper();
             for (int page = 1; page <= pages; page++) {
@@ -72,10 +81,10 @@ public class DocumentParser {
         return new Parsed(filename, pages, blocks);
     }
 
-    private Parsed parseDocx(String filename, byte[] bytes) throws IOException {
+    private Parsed parseDocx(String filename, InputStream input) throws IOException {
         List<Block> blocks = new ArrayList<>();
         int paragraphs = 0;
-        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+        try (XWPFDocument document = new XWPFDocument(input)) {
             for (IBodyElement element : document.getBodyElements()) {
                 if (element instanceof XWPFParagraph paragraph) {
                     paragraphs++;
@@ -106,17 +115,22 @@ public class DocumentParser {
         return new Parsed(filename, Math.max(1, paragraphs / 40 + 1), blocks);
     }
 
-    private Parsed parseText(String filename, byte[] bytes) {
-        String content = new String(bytes, StandardCharsets.UTF_8);
+    private Parsed parseText(String filename, InputStream input) throws IOException {
         List<Block> blocks = new ArrayList<>();
-        String[] lines = content.split("\\r?\\n");
-        for (int i = 0; i < lines.length; i++) {
-            String text = lines[i].trim();
-            if (text.isEmpty()) {
-                continue;
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(input, StandardCharsets.UTF_8))) {
+            String line;
+            int lineNumber = 0;
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                String text = line.trim();
+                if (text.isEmpty()) {
+                    continue;
+                }
+                boolean heading = isHeading(text);
+                blocks.add(new Block(text, heading, heading ? guessLevel(text) : 0,
+                        "第 " + lineNumber + " 行"));
             }
-            boolean heading = isHeading(text);
-            blocks.add(new Block(text, heading, heading ? guessLevel(text) : 0, "第 " + (i + 1) + " 行"));
         }
         return new Parsed(filename, 1, blocks);
     }

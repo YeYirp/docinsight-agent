@@ -1,5 +1,7 @@
 package com.example.docinsight.config;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -22,10 +24,19 @@ public class DatabaseConfig {
     @Bean
     public DataSource dataSource(
             @Value("${spring.datasource.url}") String url,
-            @Value("${app.database.vec-extension:}") String vecExtension) throws IOException {
+            @Value("${app.database.vec-extension:}") String vecExtension,
+            @Value("${app.database.pool-size:4}") int poolSize) throws IOException {
         Path databaseFile = resolveDatabaseFile(url);
         Path extension = SqliteExtensionLoader.resolve(databaseFile.getParent(), vecExtension);
-        return new SqliteDataSource(url, extension);
+        HikariConfig config = new HikariConfig();
+        config.setPoolName("docinsight-sqlite");
+        config.setDataSource(new SqliteDataSource(url, extension));
+        config.setMaximumPoolSize(Math.max(1, poolSize));
+        config.setMinimumIdle(1);
+        config.setConnectionTimeout(10_000);
+        config.setValidationTimeout(3_000);
+        config.setAutoCommit(true);
+        return new HikariDataSource(config);
     }
 
     @Bean

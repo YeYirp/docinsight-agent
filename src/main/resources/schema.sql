@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS document (
     chunk_count INTEGER NOT NULL,
     size_bytes INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
+    media_path TEXT,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_base(id) ON DELETE CASCADE
 );
 
@@ -35,8 +37,8 @@ CREATE INDEX IF NOT EXISTS idx_chunk_document_order
     ON chunk(document_id, chunk_order);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
-    chunk_id UNINDEXED,
-    document_id UNINDEXED,
     search_terms,
+    content = '',
+    contentless_delete = 1,
     tokenize = 'unicode61'
 );

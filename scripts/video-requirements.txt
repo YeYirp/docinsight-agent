@@ -1,0 +1,4 @@
+# faster-whisper 1.2.1 calls PyAV's metadata_errors argument.
+# PyAV 19 removed/changed it on current Windows builds, so pin 16.0.1.
+faster-whisper==1.2.1
+av==16.0.1

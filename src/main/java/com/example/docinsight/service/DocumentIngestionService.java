@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,12 +31,21 @@ public class DocumentIngestionService {
         if (!DocumentFormat.supports(name)) {
             throw new IllegalArgumentException("只支持 " + DocumentFormat.supportedLabels());
         }
+        DocumentFormat format = DocumentFormat.fromFilename(name).orElseThrow();
+        if (format.isVideo()) {
+            throw new IllegalArgumentException("视频文件需要走视频摄取流程");
+        }
+        if (file.getSize() > 50L * 1024 * 1024) {
+            throw new IllegalArgumentException("文档单文件不能超过 50MB");
+        }
         if (knowledgeBaseId != null && store.getKnowledgeBase(knowledgeBaseId) == null) {
             throw new IllegalArgumentException("知识库不存在");
         }
 
-        byte[] bytes = file.getBytes();
-        DocumentParser.Parsed parsed = parser.parse(name, bytes);
+        DocumentParser.Parsed parsed;
+        try (InputStream input = file.getInputStream()) {
+            parsed = parser.parse(name, input);
+        }
         String docId = UUID.randomUUID().toString().substring(0, 8);
         List<Chunk> chunks = chunker.chunk(docId, name, parsed.blocks());
         if (chunks.isEmpty()) {
@@ -43,7 +53,7 @@ public class DocumentIngestionService {
         }
 
         DocumentInfo info = new DocumentInfo(
-                docId, name, knowledgeBaseId, parsed.pages(), chunks.size(), bytes.length,
+                docId, name, knowledgeBaseId, parsed.pages(), chunks.size(), file.getSize(),
                 System.currentTimeMillis());
         store.save(info, chunks);
         return info;

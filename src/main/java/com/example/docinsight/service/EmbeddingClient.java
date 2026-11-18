@@ -44,6 +44,21 @@ public class EmbeddingClient {
         if (!enabled() || inputs.isEmpty()) {
             return null;
         }
+        int batchSize = Math.max(1, props.embedding().batchSize());
+        List<double[]> vectors = new ArrayList<>(inputs.size());
+        for (int offset = 0; offset < inputs.size(); offset += batchSize) {
+            List<String> batch = inputs.subList(offset,
+                    Math.min(inputs.size(), offset + batchSize));
+            List<double[]> embedded = embedBatch(batch);
+            if (embedded == null || embedded.size() != batch.size()) {
+                return null;
+            }
+            vectors.addAll(embedded);
+        }
+        return vectors;
+    }
+
+    private List<double[]> embedBatch(List<String> inputs) {
         try {
             String body = mapper.writeValueAsString(Map.of(
                     "model", props.embedding().model(),

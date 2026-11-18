@@ -21,8 +21,11 @@ public final class SqliteSchema {
                 new ClassPathResource("schema.sql"));
         populator.execute(dataSource);
         ensureDocumentCreatedAt(jdbc);
+        ensureDocumentMediaColumns(jdbc);
+        ensureContentlessFts(jdbc);
         initializeFtsTriggers(jdbc);
         initializeVectorTable(jdbc, vectorDimension);
+        jdbc.execute("PRAGMA optimize");
     }
 
     /** 兼容旧版本数据库：document 表早期没有上传时间字段。 */
@@ -47,24 +50,77 @@ public final class SqliteSchema {
                 """);
     }
 
-    private static void initializeFtsTriggers(JdbcTemplate jdbc) {
+    /** 兼容旧版本数据库：视频文件只保存磁盘引用和时长，不把二进制写入 SQLite。 */
+    private static void ensureDocumentMediaColumns(JdbcTemplate jdbc) {
+        List<String> columns = jdbc.queryForList(
+                "SELECT name FROM pragma_table_info('document')", String.class);
+        if (!columns.contains("media_path")) {
+            jdbc.execute("ALTER TABLE document ADD COLUMN media_path TEXT");
+        }
+        if (!columns.contains("duration_ms")) {
+            jdbc.execute("ALTER TABLE document ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0");
+        }
+    }
+
+    /**
+     * 旧版 FTS 表会保存 chunk_id、document_id 和 search_terms 的副本。
+     * 新版只保留索引，不保存正文副本，首次启动时自动重建一次。
+     */
+    private static void ensureContentlessFts(JdbcTemplate jdbc) {
+        List<String> existing = jdbc.queryForList(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chunk_fts'",
+                String.class);
+        if (existing.isEmpty()) {
+            createContentlessFts(jdbc);
+            return;
+        }
+        String ddl = existing.get(0);
+        if (ddl != null && ddl.contains("contentless_delete")) {
+            return;
+        }
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_ai");
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_ad");
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_au");
+        jdbc.execute("DROP TABLE IF EXISTS chunk_fts");
+        createContentlessFts(jdbc);
+        jdbc.update("""
+                INSERT INTO chunk_fts(rowid, search_terms)
+                SELECT rowid, search_terms FROM chunk
+                """);
+    }
+
+    private static void createContentlessFts(JdbcTemplate jdbc) {
         jdbc.execute("""
-                CREATE TRIGGER IF NOT EXISTS chunk_ai AFTER INSERT ON chunk BEGIN
-                    INSERT INTO chunk_fts(rowid, chunk_id, document_id, search_terms)
-                    VALUES (new.rowid, new.id, new.document_id, new.search_terms);
+                CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
+                    search_terms,
+                    content = '',
+                    contentless_delete = 1,
+                    tokenize = 'unicode61'
+                )
+                """);
+    }
+
+    private static void initializeFtsTriggers(JdbcTemplate jdbc) {
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_ai");
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_ad");
+        jdbc.execute("DROP TRIGGER IF EXISTS chunk_au");
+        jdbc.execute("""
+                CREATE TRIGGER chunk_ai AFTER INSERT ON chunk BEGIN
+                    INSERT INTO chunk_fts(rowid, search_terms)
+                    VALUES (new.rowid, new.search_terms);
                 END
                 """);
         jdbc.execute("""
-                CREATE TRIGGER IF NOT EXISTS chunk_ad AFTER DELETE ON chunk BEGIN
+                CREATE TRIGGER chunk_ad AFTER DELETE ON chunk BEGIN
                     DELETE FROM chunk_fts WHERE rowid = old.rowid;
                 END
                 """);
         jdbc.execute("""
-                CREATE TRIGGER IF NOT EXISTS chunk_au
+                CREATE TRIGGER chunk_au
                 AFTER UPDATE OF id, document_id, search_terms ON chunk BEGIN
                     DELETE FROM chunk_fts WHERE rowid = old.rowid;
-                    INSERT INTO chunk_fts(rowid, chunk_id, document_id, search_terms)
-                    VALUES (new.rowid, new.id, new.document_id, new.search_terms);
+                    INSERT INTO chunk_fts(rowid, search_terms)
+                    VALUES (new.rowid, new.search_terms);
                 END
                 """);
     }

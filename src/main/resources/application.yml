@@ -1,5 +1,12 @@
 server:
   port: ${SERVER_PORT:8080}
+  compression:
+    enabled: true
+    min-response-size: 1024
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:32}
+      min-spare: ${TOMCAT_MIN_SPARE_THREADS:4}
 
 spring:
   application:
@@ -9,8 +16,8 @@ spring:
     driver-class-name: org.sqlite.JDBC
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 50MB
+      max-file-size: ${MAX_UPLOAD_SIZE:512MB}
+      max-request-size: ${MAX_UPLOAD_SIZE:512MB}
   mvc:
     async:
       request-timeout: 180000
@@ -29,9 +36,27 @@ app:
     api-key: ${EMBEDDING_API_KEY:}
     model: ${EMBEDDING_MODEL:BAAI/bge-m3}
     dimension: ${EMBEDDING_DIMENSION:1024}
+    batch-size: ${EMBEDDING_BATCH_SIZE:32}
 
   database:
     vec-extension: ${SQLITE_VEC_EXTENSION:}
+    pool-size: ${DB_POOL_SIZE:4}
+
+  video:
+    enabled: ${VIDEO_ENABLED:true}
+    python-command: ${VIDEO_PYTHON_COMMAND:}
+    model: ${VIDEO_WHISPER_MODEL:small}
+    device: ${VIDEO_WHISPER_DEVICE:auto}
+    compute-type: ${VIDEO_WHISPER_COMPUTE_TYPE:int8}
+    language: ${VIDEO_WHISPER_LANGUAGE:auto}
+    hf-endpoint: ${VIDEO_HF_ENDPOINT:}
+    max-file-size-mb: ${VIDEO_MAX_SIZE_MB:500}
+    max-duration-minutes: ${VIDEO_MAX_DURATION_MINUTES:120}
+    storage-dir: ${VIDEO_STORAGE_DIR:./data/media}
+    model-dir: ${VIDEO_MODEL_DIR:./data/models}
+    startup-timeout-seconds: ${VIDEO_STARTUP_TIMEOUT_SECONDS:600}
+    transcription-timeout-minutes: ${VIDEO_TRANSCRIBE_TIMEOUT_MINUTES:120}
+    worker-idle-minutes: ${VIDEO_WORKER_IDLE_MINUTES:10}
 
   rag:
     top-k: ${RAG_TOP_K:4}

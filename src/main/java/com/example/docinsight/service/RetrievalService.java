@@ -97,22 +97,32 @@ public class RetrievalService {
 
     /** 缺失向量从 SQL 查询出来并写回 chunk_vector；进程内不保留任何向量缓存。 */
     private void ensureVectors(Collection<String> docIds) {
-        List<Chunk> pending = store.chunksWithoutVectors(docIds);
-        if (pending.isEmpty()) {
-            return;
+        int batchSize = Math.max(1, props.embedding().batchSize());
+        int indexed = 0;
+        while (true) {
+            List<Chunk> pending = store.chunksWithoutVectors(docIds, batchSize);
+            if (pending.isEmpty()) {
+                break;
+            }
+            List<double[]> vectors = embeddingClient.embed(
+                    pending.stream().map(Chunk::text).toList());
+            if (vectors == null || vectors.size() != pending.size()) {
+                log.warn("vector_index_failed chunks={} fallback=keyword_only", pending.size());
+                return;
+            }
+            List<Chunk> withVectors = new ArrayList<>(pending.size());
+            for (int index = 0; index < pending.size(); index++) {
+                withVectors.add(pending.get(index).withVector(vectors.get(index)));
+            }
+            store.updateVectors(withVectors);
+            indexed += withVectors.size();
+            if (pending.size() < batchSize) {
+                break;
+            }
         }
-        List<double[]> vectors = embeddingClient.embed(
-                pending.stream().map(Chunk::text).toList());
-        if (vectors == null || vectors.size() != pending.size()) {
-            log.warn("vector_index_failed chunks={} fallback=keyword_only", pending.size());
-            return;
+        if (indexed > 0) {
+            log.info("vector_index_ready chunks={}", indexed);
         }
-        List<Chunk> withVectors = new ArrayList<>(pending.size());
-        for (int index = 0; index < pending.size(); index++) {
-            withVectors.add(pending.get(index).withVector(vectors.get(index)));
-        }
-        store.updateVectors(withVectors);
-        log.info("vector_index_ready chunks={}", withVectors.size());
     }
 
     private double[] embedOne(String question) {

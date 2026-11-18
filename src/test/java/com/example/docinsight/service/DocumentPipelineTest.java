@@ -13,7 +13,7 @@ class DocumentPipelineTest {
 
     private final AiProperties props = new AiProperties(
             new AiProperties.Ai("http://localhost", "", "test", 30, 3),
-            new AiProperties.Embedding("http://localhost", "", "bge", 1024),
+            new AiProperties.Embedding("http://localhost", "", "bge", 1024, 32),
             new AiProperties.Rag(4, 200, 40));
 
     private static final String SAMPLE = """
@@ -59,7 +59,12 @@ class DocumentPipelineTest {
         assertThat(DocumentFormat.fromFilename("guide.docx")).contains(DocumentFormat.DOCX);
         assertThat(DocumentFormat.supports("notes.md")).isTrue();
         assertThat(DocumentFormat.supports("notes.txt")).isTrue();
+        assertThat(DocumentFormat.fromFilename("clip.MP4"))
+                .contains(DocumentFormat.MP4);
+        assertThat(DocumentFormat.MP4.isVideo()).isTrue();
+        assertThat(DocumentFormat.PDF.isVideo()).isFalse();
         assertThat(DocumentFormat.supports("notes.csv")).isFalse();
-        assertThat(DocumentFormat.supportedLabels()).isEqualTo("PDF / DOCX / MD / TXT");
+        assertThat(DocumentFormat.supportedLabels())
+                .isEqualTo("PDF / DOCX / MD / TXT / MP4 / MOV / MKV / WEBM / AVI / M4V");
     }
 }
