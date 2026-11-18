@@ -19,10 +19,11 @@
 - **本地持久化**：SQLite 保存知识库、文档元数据、文本切片、FTS5 索引和向量；
   视频原文件和 Whisper 模型不写入数据库。
 - **引用溯源**：回答关联具体 Chunk，前端可以展开查看原文片段和章节/页码/时间位置。
-- **文件查看**：点击知识库中的文件名即可查看原件；PDF 内嵌预览、文本显示原文、
-  Word 展示解析后的分节内容、视频直接播放，不提供原文件编辑。
+- **文件查看与编辑**：点击文件名即可查看原件；MD/TXT 支持在线编辑并自动重建索引，
+  PDF 内嵌预览、Word 展示解析后的分节内容、视频直接播放，这些二进制文件只读。
 - **流式回答**：SSE 返回阶段进度、引用来源和增量文本，同时记录耗时与 Token。
-- **知识库工作区**：支持新建、编辑名称和描述、删除、搜索、排序、文档/画廊视图和多知识库问答。
+- **知识库工作区**：支持新建、编辑名称和描述、原文件目录管理、删除、搜索、排序、
+  文档/画廊视图和多知识库问答。
 - **运行监控**：提供 `/api/health` 和 `/api/metrics`。
 
 ## 架构
@@ -144,14 +145,20 @@ QUEUED -> PROCESSING -> DONE
 ```text
 data/
 ├── docinsight.db       SQLite：知识库、切片、FTS5、向量
-├── documents/          普通文档原件
-├── media/              视频原文件
+├── sourcefiles/        每个知识库一个原文件目录
+│   └── 知识库名称/
+│       ├── 文档原件
+│       └── 视频原件
 ├── models/             Whisper 模型缓存
 └── native/             sqlite-vec 等运行时释放文件
 ```
 
 `data/` 已加入 `.gitignore`。备份时复制整个 `data/` 目录即可。旧版本上传的文档没有原件时，
 文件查看页会回退展示已解析的索引文本。
+
+每个知识库可以在自己的设置页查看独立路径，并通过应用内文件夹浏览器修改。路径字段不可手动输入；
+文件夹浏览器直接读取后端所在机器的目录，因此远程访问和 Docker 环境也可使用。
+全局根目录通过 `SOURCEFILES_ROOT` 配置。
 
 数据库体积主要取决于切片数量和向量数量。视频原文件不进入 SQLite；启用 Embedding 后，
 向量通常会比文本本身占用更多空间。
@@ -189,7 +196,7 @@ Docker 可以使用 compose 的 `env_file`。
 | `EMBEDDING_DIMENSION` | `1024` | 向量维度，必须和 `chunk_vector` 一致 |
 | `EMBEDDING_BATCH_SIZE` | `32` | 单次 Embedding 最大文本条数 |
 | `DATABASE_URL` | `jdbc:sqlite:./data/docinsight.db` | SQLite 文件路径 |
-| `DOCUMENT_STORAGE_DIR` | `./data/documents` | 普通文档原件目录 |
+| `SOURCEFILES_ROOT` | `./data/sourcefiles` | 所有知识库原文件根目录 |
 | `SQLITE_VEC_EXTENSION` | 空 | 可选外部 sqlite-vec 扩展路径 |
 | `DB_POOL_SIZE` | `4` | SQLite 连接池上限 |
 | `RAG_TOP_K` | `4` | 最终返回块数 |
@@ -204,7 +211,6 @@ Docker 可以使用 compose 的 `env_file`。
 | `VIDEO_HF_ENDPOINT` | 空 | Hugging Face 模型下载镜像 |
 | `VIDEO_MAX_SIZE_MB` | `500` | 单个视频大小上限 |
 | `VIDEO_MAX_DURATION_MINUTES` | `120` | 单个视频时长上限 |
-| `VIDEO_STORAGE_DIR` | `./data/media` | 视频原文件目录 |
 | `VIDEO_MODEL_DIR` | `./data/models` | Whisper 模型缓存目录 |
 | `VIDEO_STARTUP_TIMEOUT_SECONDS` | `600` | worker 启动/模型加载超时 |
 | `VIDEO_TRANSCRIBE_TIMEOUT_MINUTES` | `120` | 单次视频转写超时 |
@@ -229,8 +235,9 @@ $env:EMBEDDING_API_KEY="sk-xxx"
 | --- | --- | --- |
 | `GET` | `/api/knowledge-bases` | 知识库列表 |
 | `POST` | `/api/knowledge-bases` | 新建知识库，JSON 字段 `name`、`description` |
-| `PUT` | `/api/knowledge-bases/{id}` | 修改知识库名称和描述 |
+| `PUT` | `/api/knowledge-bases/{id}` | 修改名称、描述和原文件目录 |
 | `GET` | `/api/knowledge-bases/{id}` | 知识库详情 |
+| `GET` | `/api/knowledge-bases/{id}/storage` | 当前知识库原文件绝对路径 |
 | `DELETE` | `/api/knowledge-bases/{id}` | 删除知识库、文档、索引和视频文件 |
 | `GET` | `/api/knowledge-bases/{id}/documents` | 知识库文档列表 |
 | `POST` | `/api/knowledge-bases/{id}/documents` | 上传文档或视频，multipart 字段名 `file` |
@@ -239,7 +246,9 @@ $env:EMBEDDING_API_KEY="sk-xxx"
 | `DELETE` | `/api/docs/{id}` | 删除文档、索引和对应视频文件 |
 | `GET` | `/api/docs/{id}/media` | 视频播放，支持 HTTP Range |
 | `GET` | `/api/docs/{id}/content` | 文件查看页所需的内容结构 |
+| `PUT` | `/api/docs/{id}/content` | 保存 MD/TXT 文件内容并重建索引 |
 | `GET` | `/api/docs/{id}/source` | 普通文档原件，支持 HTTP Range |
+| `GET` | `/api/settings/directories?path=...` | 浏览后端可用文件夹，供知识库路径选择 |
 | `GET` | `/api/ingestion-jobs/{id}` | 查询异步视频转写任务 |
 | `POST` | `/api/ask` | SSE 问答 |
 | `GET` | `/api/health` | 服务与数据库健康检查 |
@@ -313,6 +322,7 @@ src/main/java/com/example/docinsight
     ├── DocumentParser / Chunker / DocumentFormat
     ├── DocumentIngestionService
     ├── DocumentSourceStorage / DocumentViewService
+    ├── SourceFileStorage / DocumentEditService
     ├── DocumentStore
     ├── EmbeddingClient / RetrievalService
     ├── Tools / AgentService / MetricsService

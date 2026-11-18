@@ -4,7 +4,16 @@
   if (root) root.ApiClient = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   async function request(url, options = {}) {
-    const response = await fetch(url, options);
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (error) {
+      const message = String(error && error.message || "");
+      if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(message)) {
+        throw new Error("无法连接到服务，请确认后端已启动");
+      }
+      throw error;
+    }
     if (!response.ok) {
       const text = await response.text();
       let message = text;

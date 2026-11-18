@@ -7,10 +7,11 @@ public record KnowledgeBase(
         long createdAt,
         long updatedAt,
         int documentCount,
-        int chunkCount
+        int chunkCount,
+        String sourceDir
 ) {
     public KnowledgeBase(String id, String name, String description,
                          long createdAt, int documentCount, int chunkCount) {
-        this(id, name, description, createdAt, createdAt, documentCount, chunkCount);
+        this(id, name, description, createdAt, createdAt, documentCount, chunkCount, name);
     }
 }

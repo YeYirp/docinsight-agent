@@ -9,6 +9,7 @@ import com.example.docinsight.service.DocumentFormat;
 import com.example.docinsight.service.DocumentIngestionService;
 import com.example.docinsight.service.DocumentSourceStorage;
 import com.example.docinsight.service.DocumentStore;
+import com.example.docinsight.service.SourceFileStorage;
 import com.example.docinsight.service.VideoIngestionJobService;
 import com.example.docinsight.service.VideoStorage;
 import jakarta.validation.Valid;
@@ -28,6 +29,9 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,15 +45,18 @@ public class KnowledgeBaseController {
     private final VideoIngestionJobService videoJobs;
     private final VideoStorage videoStorage;
     private final DocumentSourceStorage sourceStorage;
+    private final SourceFileStorage sourceFiles;
 
     public KnowledgeBaseController(DocumentStore store, DocumentIngestionService ingestion,
                                    VideoIngestionJobService videoJobs, VideoStorage videoStorage,
-                                   DocumentSourceStorage sourceStorage) {
+                                   DocumentSourceStorage sourceStorage,
+                                   SourceFileStorage sourceFiles) {
         this.store = store;
         this.ingestion = ingestion;
         this.videoJobs = videoJobs;
         this.videoStorage = videoStorage;
         this.sourceStorage = sourceStorage;
+        this.sourceFiles = sourceFiles;
     }
 
     @GetMapping
@@ -63,16 +70,60 @@ public class KnowledgeBaseController {
     }
 
     @PostMapping
-    public ResponseEntity<KnowledgeBase> create(@Valid @RequestBody CreateKnowledgeBaseInput input) {
-        KnowledgeBase created = store.createKnowledgeBase(input.name(), input.description());
+    public ResponseEntity<KnowledgeBase> create(@Valid @RequestBody CreateKnowledgeBaseInput input)
+            throws IOException {
+        String sourceDir = sourceFiles.createDirectory(input.name());
+        KnowledgeBase created = store.createKnowledgeBase(
+                input.name(), input.description(), sourceDir);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @PutMapping("/{id}")
     public KnowledgeBase update(@PathVariable String id,
-                                @Valid @RequestBody UpdateKnowledgeBaseInput input) {
-        requireKnowledgeBase(id);
-        return store.updateKnowledgeBase(id, input.name(), input.description());
+                                @Valid @RequestBody UpdateKnowledgeBaseInput input)
+            throws IOException {
+        KnowledgeBase existing = requireKnowledgeBase(id);
+        Path oldDirectory = sourceFiles.resolveDirectory(existing.sourceDir());
+        String requested = input.sourcePath();
+        Path requestedDirectory = requested == null || requested.isBlank()
+                ? oldDirectory : sourceFiles.resolveDirectory(requested);
+        if (requestedDirectory.equals(oldDirectory)
+                && !existing.name().equals(input.name().trim())
+                && sourceFiles.isDefaultDirectory(existing.sourceDir(), existing.name())) {
+            requestedDirectory = sourceFiles.defaultDirectory(input.name());
+        }
+        if (Files.exists(requestedDirectory) && !Files.isDirectory(requestedDirectory)) {
+            throw new IllegalArgumentException("原文件保存路径必须是文件夹");
+        }
+        List<String> storedPaths = new ArrayList<>();
+        for (DocumentStore.DocumentPaths paths
+                : store.documentPathsForKnowledgeBase(id)) {
+            if (paths.sourcePath() != null) {
+                storedPaths.add(paths.sourcePath());
+            }
+            if (paths.mediaPath() != null) {
+                storedPaths.add(paths.mediaPath());
+            }
+        }
+        java.util.Map<String, String> moves = sourceFiles.relocateFiles(
+                storedPaths, requestedDirectory);
+        try {
+            return store.updateKnowledgeBaseWithPaths(
+                    id, input.name(), input.description(),
+                    sourceFiles.storageReference(requestedDirectory), moves);
+        } catch (RuntimeException error) {
+            sourceFiles.restoreFiles(moves);
+            throw error;
+        }
+    }
+
+    @GetMapping("/{id}/storage")
+    public Map<String, Object> storage(@PathVariable String id) {
+        KnowledgeBase item = requireKnowledgeBase(id);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("path", sourceFiles.absoluteDirectory(item.sourceDir()));
+        body.put("directory", item.sourceDir());
+        return body;
     }
 
     @DeleteMapping("/{id}")

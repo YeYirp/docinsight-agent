@@ -37,6 +37,9 @@ public class DocumentStore {
     public record KeywordCandidate(Chunk chunk, double keywordScore, double headingScore) {
     }
 
+    public record DocumentPaths(String docId, String sourcePath, String mediaPath) {
+    }
+
     private record Scope(String sql, List<Object> args) {
     }
 
@@ -44,8 +47,8 @@ public class DocumentStore {
     private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}_-]{2,}");
 
     private static final String KNOWLEDGE_BASE_SELECT = """
-            SELECT kb.id, kb.name, kb.description, kb.created_at,
-                   kb.updated_at,
+            SELECT kb.id, kb.name, kb.description, kb.created_at, kb.updated_at,
+                   kb.source_dir,
                    (SELECT COUNT(*) FROM document d
                     WHERE d.knowledge_base_id = kb.id) AS document_count,
                    (SELECT COALESCE(SUM(d.chunk_count), 0) FROM document d
@@ -60,6 +63,11 @@ public class DocumentStore {
     }
 
     public KnowledgeBase createKnowledgeBase(String name, String description) {
+        return createKnowledgeBase(name, description, name);
+    }
+
+    public KnowledgeBase createKnowledgeBase(String name, String description,
+                                             String sourceDir) {
         String normalizedName = name == null ? "" : name.trim();
         if (normalizedName.isBlank()) {
             throw new IllegalArgumentException("知识库名称不能为空");
@@ -68,15 +76,16 @@ public class DocumentStore {
         try {
             jdbc.update("""
                             INSERT INTO knowledge_base(
-                                id, name, name_key, description, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                                id, name, name_key, description, created_at, updated_at, source_dir)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                             """,
                     id,
                     normalizedName,
                     normalizedName.toLowerCase(Locale.ROOT),
                     description == null ? "" : description.trim(),
                     System.currentTimeMillis(),
-                    System.currentTimeMillis());
+                    System.currentTimeMillis(),
+                    sourceDir == null ? "" : sourceDir);
         } catch (DataIntegrityViolationException error) {
             throw new IllegalArgumentException("同名知识库已存在");
         }
@@ -84,26 +93,109 @@ public class DocumentStore {
     }
 
     public KnowledgeBase updateKnowledgeBase(String id, String name, String description) {
+        KnowledgeBase existing = getKnowledgeBase(id);
+        return existing == null ? null
+                : updateKnowledgeBase(id, name, description, existing.sourceDir());
+    }
+
+    @Transactional
+    public KnowledgeBase updateKnowledgeBase(String id, String name, String description,
+                                             String sourceDir) {
         String normalizedName = name == null ? "" : name.trim();
         if (normalizedName.isBlank()) {
             throw new IllegalArgumentException("知识库名称不能为空");
         }
-        if (getKnowledgeBase(id) == null) {
+        KnowledgeBase existing = getKnowledgeBase(id);
+        if (existing == null) {
             return null;
         }
         try {
             jdbc.update("""
                     UPDATE knowledge_base
-                    SET name = ?, name_key = ?, description = ?, updated_at = ?
+                    SET name = ?, name_key = ?, description = ?, updated_at = ?, source_dir = ?
                     WHERE id = ?
                     """,
                     normalizedName,
                     normalizedName.toLowerCase(Locale.ROOT),
                     description == null ? "" : description.trim(),
                     System.currentTimeMillis(),
+                    sourceDir == null ? "" : sourceDir,
                     id);
         } catch (DataIntegrityViolationException error) {
             throw new IllegalArgumentException("同名知识库已存在");
+        }
+        if (existing.sourceDir() != null && !existing.sourceDir().isBlank()
+                && !existing.sourceDir().equals(sourceDir)) {
+            rebaseSourcePaths(existing.sourceDir(), sourceDir);
+        }
+        return getKnowledgeBase(id);
+    }
+
+    @Transactional
+    public void rebaseSourcePaths(String oldDirectory, String newDirectory) {
+        if (oldDirectory == null || oldDirectory.isBlank()
+                || newDirectory == null || newDirectory.isBlank()
+                || oldDirectory.equals(newDirectory)) {
+            return;
+        }
+        jdbc.update("""
+                UPDATE document
+                SET source_path = ? || substr(source_path, length(?) + 1)
+                WHERE substr(source_path, 1, length(?)) = ?
+                """, newDirectory, oldDirectory, oldDirectory, oldDirectory);
+        jdbc.update("""
+                UPDATE document
+                SET media_path = ? || substr(media_path, length(?) + 1)
+                WHERE substr(media_path, 1, length(?)) = ?
+                """, newDirectory, oldDirectory, oldDirectory, oldDirectory);
+    }
+
+    public List<DocumentPaths> documentPathsForKnowledgeBase(String knowledgeBaseId) {
+        return jdbc.query("""
+                        SELECT id, source_path, media_path
+                        FROM document
+                        WHERE knowledge_base_id = ?
+                          AND (source_path IS NOT NULL OR media_path IS NOT NULL)
+                        """,
+                (rs, rowNum) -> new DocumentPaths(
+                        rs.getString("id"),
+                        rs.getString("source_path"),
+                        rs.getString("media_path")),
+                knowledgeBaseId);
+    }
+
+    @Transactional
+    public KnowledgeBase updateKnowledgeBaseWithPaths(
+            String id, String name, String description, String sourceDir,
+            Map<String, String> pathUpdates) {
+        String normalizedName = name == null ? "" : name.trim();
+        if (normalizedName.isBlank()) {
+            throw new IllegalArgumentException("知识库名称不能为空");
+        }
+        try {
+            jdbc.update("""
+                    UPDATE knowledge_base
+                    SET name = ?, name_key = ?, description = ?, updated_at = ?, source_dir = ?
+                    WHERE id = ?
+                    """,
+                    normalizedName,
+                    normalizedName.toLowerCase(Locale.ROOT),
+                    description == null ? "" : description.trim(),
+                    System.currentTimeMillis(),
+                    sourceDir == null ? "" : sourceDir,
+                    id);
+        } catch (DataIntegrityViolationException error) {
+            throw new IllegalArgumentException("同名知识库已存在");
+        }
+        for (DocumentPaths paths : documentPathsForKnowledgeBase(id)) {
+            String source = pathUpdates.getOrDefault(paths.sourcePath(), paths.sourcePath());
+            String media = pathUpdates.getOrDefault(paths.mediaPath(), paths.mediaPath());
+            if (!java.util.Objects.equals(source, paths.sourcePath())
+                    || !java.util.Objects.equals(media, paths.mediaPath())) {
+                jdbc.update("""
+                        UPDATE document SET source_path = ?, media_path = ? WHERE id = ?
+                        """, source, media, paths.docId());
+            }
         }
         return getKnowledgeBase(id);
     }
@@ -197,6 +289,45 @@ public class DocumentStore {
                 sourcePath,
                 mediaPath,
                 durationMs);
+        insertChunks(chunks);
+        List<Chunk> withVectors = chunks.stream()
+                .filter(chunk -> chunk.vector() != null)
+                .toList();
+        if (!withVectors.isEmpty()) {
+            updateVectors(withVectors);
+        }
+        if (info.knowledgeBaseId() != null) {
+            jdbc.update("UPDATE knowledge_base SET updated_at = ? WHERE id = ?",
+                    info.createdAt(), info.knowledgeBaseId());
+        }
+    }
+
+    @Transactional
+    public DocumentInfo replaceContent(String docId, List<Chunk> chunks,
+                                       long sizeBytes, int pages) {
+        DocumentInfo existing = document(docId);
+        if (existing == null) {
+            throw new IllegalArgumentException("文档不存在");
+        }
+        jdbc.update("""
+                DELETE FROM chunk_vector
+                WHERE chunk_key IN (SELECT rowid FROM chunk WHERE document_id = ?)
+                """, docId);
+        jdbc.update("DELETE FROM chunk WHERE document_id = ?", docId);
+        jdbc.update("""
+                UPDATE document
+                SET pages = ?, chunk_count = ?, size_bytes = ?
+                WHERE id = ?
+                """, pages, chunks.size(), sizeBytes, docId);
+        insertChunks(chunks);
+        if (existing.knowledgeBaseId() != null) {
+            jdbc.update("UPDATE knowledge_base SET updated_at = ? WHERE id = ?",
+                    System.currentTimeMillis(), existing.knowledgeBaseId());
+        }
+        return document(docId);
+    }
+
+    private void insertChunks(List<Chunk> chunks) {
         jdbc.batchUpdate("""
                         INSERT INTO chunk(
                             id, document_id, chunk_order, doc_name, heading, text, location, search_terms)
@@ -222,16 +353,6 @@ public class DocumentStore {
                         return chunks.size();
                     }
                 });
-        List<Chunk> withVectors = chunks.stream()
-                .filter(chunk -> chunk.vector() != null)
-                .toList();
-        if (!withVectors.isEmpty()) {
-            updateVectors(withVectors);
-        }
-        if (info.knowledgeBaseId() != null) {
-            jdbc.update("UPDATE knowledge_base SET updated_at = ? WHERE id = ?",
-                    info.createdAt(), info.knowledgeBaseId());
-        }
     }
 
     public List<DocumentInfo> list() {
@@ -565,7 +686,8 @@ public class DocumentStore {
                 rs.getLong("created_at"),
                 rs.getLong("updated_at"),
                 rs.getInt("document_count"),
-                rs.getInt("chunk_count"));
+                rs.getInt("chunk_count"),
+                rs.getString("source_dir"));
     }
 
     private RowMapper<DocumentInfo> documentMapper() {

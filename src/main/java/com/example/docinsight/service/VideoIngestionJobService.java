@@ -2,6 +2,7 @@ package com.example.docinsight.service;
 
 import com.example.docinsight.config.VideoProperties;
 import com.example.docinsight.model.DocumentInfo;
+import com.example.docinsight.model.KnowledgeBase;
 import com.example.docinsight.model.VideoIngestionJob;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -33,6 +34,7 @@ public class VideoIngestionJobService {
     private final VideoProperties props;
     private final VideoStorage storage;
     private final VideoIngestionService ingestion;
+    private final DocumentStore store;
     private final Map<String, VideoIngestionJob> jobs = new ConcurrentHashMap<>();
     private final AtomicInteger threadNumber = new AtomicInteger();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -42,10 +44,11 @@ public class VideoIngestionJobService {
     });
 
     public VideoIngestionJobService(VideoProperties props, VideoStorage storage,
-                                    VideoIngestionService ingestion) {
+                                    VideoIngestionService ingestion, DocumentStore store) {
         this.props = props;
         this.storage = storage;
         this.ingestion = ingestion;
+        this.store = store;
     }
 
     public VideoIngestionJob submit(MultipartFile file, String knowledgeBaseId) throws IOException {
@@ -65,7 +68,10 @@ public class VideoIngestionJobService {
         }
 
         String docId = UUID.randomUUID().toString().substring(0, 8);
-        StoredVideo stored = storage.store(file, docId, name);
+        KnowledgeBase knowledgeBase = knowledgeBaseId == null
+                ? null : store.getKnowledgeBase(knowledgeBaseId);
+        StoredVideo stored = storage.store(file, docId, name,
+                knowledgeBase == null ? null : knowledgeBase.sourceDir());
         String jobId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
         VideoIngestionJob job = new VideoIngestionJob(

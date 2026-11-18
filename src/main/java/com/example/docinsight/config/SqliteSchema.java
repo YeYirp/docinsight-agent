@@ -36,6 +36,9 @@ public final class SqliteSchema {
         if (!columns.contains("updated_at")) {
             jdbc.execute("ALTER TABLE knowledge_base ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
         }
+        if (!columns.contains("source_dir")) {
+            jdbc.execute("ALTER TABLE knowledge_base ADD COLUMN source_dir TEXT NOT NULL DEFAULT ''");
+        }
         jdbc.update("""
                 UPDATE knowledge_base
                 SET updated_at = COALESCE(
@@ -44,6 +47,11 @@ public final class SqliteSchema {
                      WHERE d.knowledge_base_id = knowledge_base.id),
                     created_at)
                 WHERE updated_at = 0
+                """);
+        jdbc.update("""
+                UPDATE knowledge_base
+                SET source_dir = name
+                WHERE source_dir = ''
                 """);
     }
 

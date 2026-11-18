@@ -7,10 +7,13 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,9 +40,12 @@ class KnowledgeBaseFlowTest {
         String accountId = account.path("id").asText();
 
         String updatedName = "运维资料库-" + System.nanoTime();
-        JsonNode updated = updateKnowledgeBase(opsId, updatedName, "备份、恢复与账号操作");
+        JsonNode updated = updateKnowledgeBase(
+                opsId, updatedName, "备份、恢复与账号操作", null);
         assertThat(updated.path("name").asText()).isEqualTo(updatedName);
         assertThat(updated.path("description").asText()).isEqualTo("备份、恢复与账号操作");
+        JsonNode storage = get("/api/knowledge-bases/" + opsId + "/storage");
+        assertThat(storage.path("path").asText()).contains(updatedName);
 
         assertThat(upload(opsId, "ops-manual.md", """
                 # 运维手册
@@ -51,6 +57,24 @@ class KnowledgeBaseFlowTest {
                 ## 账号锁定
                 连续五次密码错误会锁定账号三十分钟。
                 """).statusCode()).isEqualTo(200);
+
+        Path customPath = Path.of("target", "test-data",
+                "custom-kb-" + System.nanoTime()).toAbsolutePath();
+        JsonNode customUpdated = updateKnowledgeBase(
+                opsId, updatedName, "自定义原文件目录", customPath.toString());
+        assertThat(customUpdated.path("name").asText()).isEqualTo(updatedName);
+        JsonNode customStorage = get("/api/knowledge-bases/" + opsId + "/storage");
+        assertThat(Path.of(customStorage.path("path").asText()).toAbsolutePath().normalize())
+                .isEqualTo(customPath.normalize());
+        assertThat(Files.exists(customPath.resolve("ops-manual.md"))).isTrue();
+
+        JsonNode directories = get("/api/settings/directories?path="
+                + URLEncoder.encode(customPath.toString(), StandardCharsets.UTF_8));
+        assertThat(Path.of(directories.path("current").asText()).toAbsolutePath().normalize())
+                .isEqualTo(customPath.normalize());
+        assertThat(directories.path("directories").isArray()).isTrue();
+        assertThat(directories.path("roots").isArray()).isTrue();
+        assertThat(directories.path("roots").isEmpty()).isFalse();
 
         JsonNode opsDocuments = get("/api/knowledge-bases/" + opsId + "/documents");
         assertThat(opsDocuments.toString()).contains("ops-manual.md");
@@ -65,10 +89,20 @@ class KnowledgeBaseFlowTest {
         String opsOnlyAsk = ask("账号锁定怎么处理？", opsId);
         assertThat(opsOnlyAsk).contains("event:sources");
         assertThat(opsOnlyAsk).doesNotContain("account-manual.md");
+
+        HttpResponse<String> home = http.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/"))
+                .GET()
+                .timeout(Duration.ofSeconds(20))
+                .build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertThat(home.statusCode()).isEqualTo(200);
+        assertThat(home.headers().firstValue("Cache-Control").orElse(""))
+                .contains("no-cache");
     }
 
     private JsonNode createKnowledgeBase(String name, String description) throws Exception {
-        String body = mapper.writeValueAsString(new KnowledgeBaseBody(name, description));
+        String body = mapper.writeValueAsString(
+                new KnowledgeBaseBody(name, description, null));
         HttpResponse<String> response = http.send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + port + "/api/knowledge-bases"))
                 .header("Content-Type", "application/json")
@@ -79,9 +113,11 @@ class KnowledgeBaseFlowTest {
         return mapper.readTree(response.body());
     }
 
-    private JsonNode updateKnowledgeBase(String id, String name, String description)
+    private JsonNode updateKnowledgeBase(String id, String name, String description,
+                                         String sourcePath)
             throws Exception {
-        String body = mapper.writeValueAsString(new KnowledgeBaseBody(name, description));
+        String body = mapper.writeValueAsString(
+                new KnowledgeBaseBody(name, description, sourcePath));
         HttpResponse<String> response = http.send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + port
                                 + "/api/knowledge-bases/" + id))
@@ -149,6 +185,6 @@ class KnowledgeBaseFlowTest {
         return result;
     }
 
-    private record KnowledgeBaseBody(String name, String description) {
+    private record KnowledgeBaseBody(String name, String description, String sourcePath) {
     }
 }

@@ -1,56 +1,66 @@
 package com.example.docinsight.service;
 
 import com.example.docinsight.config.VideoProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 
-/** 视频原文件保存在磁盘，数据库只记录文件名。 */
+/** 视频原文件与普通文档共用知识库 sourcefiles 目录。 */
 @Component
 public class VideoStorage {
 
     private final VideoProperties props;
-    private final Path root;
+    private final SourceFileStorage sourceFiles;
+    private final Path legacyRoot;
 
-    public VideoStorage(VideoProperties props) {
+    public VideoStorage(VideoProperties props, SourceFileStorage sourceFiles,
+                        @Value("${app.video.legacy-storage-dir:./data/media}")
+                        String legacyRoot) {
         this.props = props;
-        this.root = Path.of(props.getStorageDir()).toAbsolutePath().normalize();
+        this.sourceFiles = sourceFiles;
+        this.legacyRoot = Path.of(legacyRoot).toAbsolutePath().normalize();
+    }
+
+    public StoredVideo store(MultipartFile file, String docId, String name,
+                             String knowledgeBaseDirectory) throws IOException {
+        String mediaPath = sourceFiles.store(file, name, knowledgeBaseDirectory);
+        return new StoredVideo(docId, name, sourceFiles.path(mediaPath),
+                mediaPath, Files.size(sourceFiles.path(mediaPath)));
     }
 
     public StoredVideo store(MultipartFile file, String docId, String name) throws IOException {
-        DocumentFormat format = DocumentFormat.fromFilename(name)
-                .filter(DocumentFormat::isVideo)
-                .orElseThrow(() -> new IllegalArgumentException("不是支持的视频格式"));
-        Files.createDirectories(root);
-        String mediaPath = docId + format.extension();
-        Path target = path(mediaPath);
-        try (InputStream input = file.getInputStream()) {
-            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-        return new StoredVideo(docId, name, target, mediaPath, Files.size(target));
+        return store(file, docId, name, null);
     }
 
     public Path path(String mediaPath) {
-        Path target = root.resolve(mediaPath).normalize();
-        if (!target.startsWith(root)) {
-            throw new IllegalArgumentException("非法的视频路径");
+        Path current = sourceFiles.path(mediaPath);
+        if (Files.isRegularFile(current)) {
+            return current;
         }
-        return target;
+        if (mediaPath != null && !mediaPath.contains("/")) {
+            Path legacy = legacyRoot.resolve(mediaPath).normalize();
+            if (legacy.startsWith(legacyRoot) && Files.isRegularFile(legacy)) {
+                return legacy;
+            }
+        }
+        return current;
     }
 
     public void delete(String mediaPath) {
         if (mediaPath == null || mediaPath.isBlank()) {
             return;
         }
-        try {
-            Files.deleteIfExists(path(mediaPath));
-        } catch (IOException ignored) {
-            // Orphan cleanup should not break database deletion.
+        sourceFiles.delete(mediaPath);
+        if (!mediaPath.contains("/")) {
+            try {
+                Files.deleteIfExists(legacyRoot.resolve(mediaPath).normalize());
+            } catch (IOException ignored) {
+                // Cleanup is best effort.
+            }
         }
     }
 

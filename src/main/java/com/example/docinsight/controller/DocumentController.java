@@ -2,7 +2,9 @@ package com.example.docinsight.controller;
 
 import com.example.docinsight.model.DocumentInfo;
 import com.example.docinsight.model.DocumentContentView;
+import com.example.docinsight.model.UpdateDocumentContentInput;
 import com.example.docinsight.model.VideoIngestionJob;
+import com.example.docinsight.service.DocumentEditService;
 import com.example.docinsight.service.DocumentFormat;
 import com.example.docinsight.service.DocumentIngestionService;
 import com.example.docinsight.service.DocumentSourceStorage;
@@ -23,11 +25,14 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import jakarta.validation.Valid;
 
 import java.io.IOException;
 import java.io.FilterInputStream;
@@ -48,17 +53,20 @@ public class DocumentController {
     private final VideoStorage videoStorage;
     private final DocumentSourceStorage sourceStorage;
     private final DocumentViewService viewService;
+    private final DocumentEditService editService;
 
     public DocumentController(DocumentIngestionService ingestion, DocumentStore store,
                               VideoIngestionJobService videoJobs, VideoStorage videoStorage,
                               DocumentSourceStorage sourceStorage,
-                              DocumentViewService viewService) {
+                              DocumentViewService viewService,
+                              DocumentEditService editService) {
         this.ingestion = ingestion;
         this.store = store;
         this.videoJobs = videoJobs;
         this.videoStorage = videoStorage;
         this.sourceStorage = sourceStorage;
         this.viewService = viewService;
+        this.editService = editService;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -113,6 +121,13 @@ public class DocumentController {
                     HttpStatus.NOT_FOUND, "文档不存在");
         }
         return content;
+    }
+
+    @PutMapping("/{docId}/content")
+    public DocumentContentView updateContent(
+            @PathVariable String docId,
+            @Valid @RequestBody UpdateDocumentContentInput input) throws IOException {
+        return editService.updateText(docId, input.text());
     }
 
     @GetMapping("/{docId}/source")

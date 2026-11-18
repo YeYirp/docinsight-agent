@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DocInsight Agent</title>
+<script>
+  if (document.documentMode || !window.fetch || !window.Promise || !window.Symbol) {
+    document.addEventListener('DOMContentLoaded', function () {
+      var message = document.createElement('main');
+      message.setAttribute('style', 'min-height:100vh;display:grid;place-items:center;background:#f4f5f3;color:#17201d;font:15px/1.7 "Microsoft YaHei",sans-serif;padding:24px');
+      message.innerHTML = '<section style="width:min(560px,100%);background:#fff;border:1px solid #e4e7e3;border-radius:10px;padding:36px;text-align:center"><h1 style="font-size:22px;margin:0 0 10px">当前浏览器版本过旧</h1><p style="margin:0;color:#707a75">请关闭 IE 兼容模式，或使用最新版 Chrome、Edge 打开 http://127.0.0.1:8080。</p></section>';
+      document.body.innerHTML = '';
+      document.body.appendChild(message);
+    });
+  }
+</script>
 <style>
   :root{
     --bg:#f4f5f3;
@@ -76,7 +87,11 @@
     border-top:1px solid var(--line);padding:14px 13px 0;color:var(--faint);font-size:11.5px;
     display:flex;align-items:center;gap:7px;
   }
-  .status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  .status-dot{
+    width:8.4px;height:8.4px;border-radius:50%;background:#c9534b;
+    box-shadow:0 0 0 3px #fbeceb;
+  }
+  .status-dot.online{background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
   .workspace{min-width:0;min-height:0;height:100vh;background:var(--surface);display:flex;flex-direction:column}
   .workspace-head{
     min-height:66px;border-bottom:1px solid var(--line);padding:0 28px;
@@ -384,6 +399,9 @@
   }
   .kb-settings-card .field{margin-bottom:20px}
   .kb-settings-card .field textarea{min-height:110px}
+  .path-field{display:flex;align-items:center;gap:8px}
+  .path-field input{flex:1;min-width:0;background:#f8faf8}
+  .path-field .btn{flex:0 0 auto;height:38px}
   .kb-settings-meta{
     display:flex;gap:14px;flex-wrap:wrap;margin:0 0 22px;padding:12px 14px;
     background:#f8faf8;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:12.5px;
@@ -428,6 +446,13 @@
     color:var(--ink);white-space:pre-wrap;word-break:break-word;font:14px/1.85 "Microsoft YaHei",monospace;
     max-height:72vh;overflow:auto;
   }
+  .doc-editor{display:flex;flex-direction:column;gap:10px}
+  .doc-edit-textarea{
+    width:100%;min-height:min(70vh,720px);border:1px solid var(--line-strong);border-radius:8px;
+    background:#fcfdfc;color:var(--ink);padding:18px;resize:vertical;outline:none;
+    font:14px/1.85 "Microsoft YaHei",monospace;
+  }
+  .doc-edit-textarea:focus{border-color:#8eb29b;box-shadow:0 0 0 3px rgba(30,138,91,.08)}
   .doc-sections{display:flex;flex-direction:column;gap:12px}
   .doc-section{border:1px solid var(--line);border-radius:8px;background:#fcfdfc;padding:15px 17px}
   .doc-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px}
@@ -624,6 +649,34 @@
     width:min(520px,100%);background:#fff;border:1px solid var(--line);border-radius:8px;
     box-shadow:0 24px 70px rgba(18,25,21,.22);padding:28px;animation:dialog-in .16s ease-out;
   }
+  .folder-picker-modal{width:min(640px,100%)}
+  .folder-current-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .folder-current-row input{
+    flex:1;min-width:0;height:38px;border:1px solid var(--line-strong);border-radius:7px;
+    background:#f8faf8;color:var(--ink);padding:0 11px;font-size:12.5px;
+  }
+  .folder-roots{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .folder-root{
+    border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--muted);
+    padding:5px 8px;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;
+  }
+  .folder-root:hover{background:#f3f5f2;color:var(--ink)}
+  .folder-root .lucide{width:13px;height:13px}
+  .folder-list{
+    height:min(45vh,360px);overflow:auto;border:1px solid var(--line);border-radius:8px;
+    background:#fcfdfc;padding:5px;
+  }
+  .folder-item{
+    width:100%;border:0;border-radius:6px;background:transparent;color:var(--ink);
+    display:flex;align-items:center;gap:9px;padding:9px 10px;text-align:left;font-size:13px;
+  }
+  .folder-item:hover{background:#eef4f0}
+  .folder-item .lucide{width:16px;height:16px;color:var(--green)}
+  .folder-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .folder-item .lucide:last-child{color:var(--faint);width:14px;height:14px}
+  .folder-list-state{display:grid;place-items:center;gap:7px;min-height:120px;color:var(--muted);font-size:13px}
+  .folder-list-state .lucide{width:20px;height:20px;color:var(--green)}
+  .folder-list-state.error{color:var(--danger)}
   .modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:22px}
   .modal-head h2{font-size:22px;line-height:1.35;margin:0 0 5px;font-weight:700}
   .modal-head p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.6}
@@ -649,6 +702,8 @@
     width:44px;height:44px;border-radius:8px;background:var(--danger-soft);color:var(--danger);
     display:grid;place-items:center;flex:0 0 auto;
   }
+  .confirm-icon.neutral{background:var(--green-soft);color:var(--green-dark)}
+  .confirm-icon.warning{background:#fff4e6;color:#b97528}
   .confirm-icon .lucide{width:20px;height:20px}
   .confirm-copy{min-width:0;padding-top:1px}
   .confirm-copy h2{font-size:21px;line-height:1.35;margin:0 0 7px;font-weight:700}
@@ -799,9 +854,6 @@
           <div class="brand-sub">文档知识问答</div>
         </div>
       </div>
-      <button class="icon-button" title="刷新数据" aria-label="刷新数据" @click="refresh">
-        <i data-lucide="refresh-cw"></i>
-      </button>
     </div>
 
     <nav class="primary-nav" aria-label="主要功能">
@@ -822,7 +874,7 @@
     </div>
     <div class="sidebar-spacer"></div>
     <div class="sidebar-foot">
-      <span class="status-dot"></span>
+      <span class="status-dot" :class="{online:serviceOnline}"></span>
       <span>{{ healthText }}</span>
     </div>
   </aside>
@@ -1045,7 +1097,7 @@
                     class="kb-back"
                     title="返回知识库"
                     aria-label="返回知识库"
-                    @click="closeDocumentViewer">
+                    @click="requestCloseDocumentViewer">
                     <i data-lucide="arrow-left"></i>
                   </button>
                   <div class="doc-viewer-breadcrumb">
@@ -1056,8 +1108,26 @@
                     <strong>{{ viewerDoc?.name || '' }}</strong>
                   </div>
                   <div class="doc-viewer-top-actions">
+                    <button
+                      v-if="!fileEditing"
+                      class="btn small"
+                      :disabled="!documentContent || !documentContent.editable"
+                      :title="!documentContent ? '文件正在加载' : (!documentContent.editable ? '该文件不支持编辑' : '编辑文件')"
+                      @click="editConfirmOpen=true">
+                      <i data-lucide="pencil"></i>
+                      编辑
+                    </button>
+                    <template v-else>
+                      <button class="btn small" :disabled="fileSaving" @click="requestCancelFileEdit">
+                        取消
+                      </button>
+                      <button class="btn small primary" :disabled="fileSaving" @click="saveFileEdit(false)">
+                        <i data-lucide="save"></i>
+                        {{ fileSaving ? '保存中' : '保存' }}
+                      </button>
+                    </template>
                     <a
-                      v-if="documentContent && (documentContent.sourceAvailable || documentContent.mode==='video')"
+                      v-if="!fileEditing && documentContent && (documentContent.sourceAvailable || documentContent.mode==='video')"
                       class="btn small"
                       :href="documentContent.contentUrl"
                       target="_blank"
@@ -1084,8 +1154,13 @@
                         <span>{{ viewerDoc.chunks }} 个索引块</span>
                         <span
                           class="doc-viewer-legacy-note"
-                          v-if="documentContent && documentContent.mode==='sections' && !documentContent.sourceAvailable">
+                          v-if="documentContent && documentContent.sourceStatus==='OLD_VERSION'">
                           该文档上传于旧版本，仅保留了索引文本，暂时无法查看原始文件。
+                        </span>
+                        <span
+                          class="doc-viewer-legacy-note"
+                          v-else-if="documentContent && documentContent.sourceStatus==='MISSING'">
+                          原文件记录存在，但磁盘上的文件已丢失，暂时无法查看。
                         </span>
                       </div>
                     </div>
@@ -1113,6 +1188,14 @@
                         class="doc-viewer-pdf"
                         :src="documentContent.contentUrl"
                         :title="documentContent.document.name"></iframe>
+                      <div class="doc-editor" v-if="fileEditing">
+                        <textarea
+                          class="doc-edit-textarea"
+                          v-model="fileEditText"
+                          spellcheck="false"
+                          aria-label="编辑文件内容"></textarea>
+                        <div class="form-error" v-if="fileEditError">{{ fileEditError }}</div>
+                      </div>
                       <pre
                         v-else-if="documentContent.mode==='text'"
                         class="doc-viewer-text">{{ documentContent.rawText }}</pre>
@@ -1164,6 +1247,24 @@
                     <span>{{ currentKb.documentCount }} 篇文档</span>
                     <span>{{ currentKb.chunkCount }} 个索引块</span>
                     <span>创建于 {{ formatDateTime(currentKb.createdAt) }}</span>
+                  </div>
+                  <div class="field">
+                    <label for="edit-kb-path">原文件保存路径</label>
+                    <div class="path-field">
+                      <input
+                        id="edit-kb-path"
+                        readonly
+                        :value="kbStorageLoading ? '正在读取…' : (kbStorageError || kbEditForm.sourcePath)">
+                      <button
+                        type="button"
+                        class="btn small"
+                        :disabled="kbStorageLoading"
+                        @click="pickKbStoragePath">
+                        <i data-lucide="folder-open"></i>
+                        选择路径
+                      </button>
+                    </div>
+                    <span class="field-hint">新上传的文档和视频会保存到该目录</span>
                   </div>
                   <div class="field">
                     <label for="edit-kb-name">知识库名称</label>
@@ -1519,6 +1620,116 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" v-if="editConfirmOpen" @click.self="editConfirmOpen=false">
+    <div class="confirm-modal" role="dialog" aria-modal="true">
+      <div class="confirm-head">
+        <div class="confirm-icon neutral"><i data-lucide="pencil"></i></div>
+        <div class="confirm-copy">
+          <h2>编辑文件？</h2>
+          <p>确定要编辑吗？</p>
+        </div>
+      </div>
+      <div class="confirm-detail">保存后会更新原文件，并重新生成检索切片和索引。</div>
+      <div class="modal-actions">
+        <button class="btn" @click="editConfirmOpen=false">取消</button>
+        <button class="btn primary" @click="beginFileEdit">
+          <i data-lucide="pencil"></i>
+          确定编辑
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" v-if="leaveDialogOpen" @click.self="leaveDialogOpen=false">
+    <div class="confirm-modal" role="dialog" aria-modal="true">
+      <div class="confirm-head">
+        <div class="confirm-icon warning"><i data-lucide="circle-alert"></i></div>
+        <div class="confirm-copy">
+          <h2>文件尚未保存</h2>
+          <p>文件编辑后没有保存，是否需要保存？</p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" @click="leaveDialogOpen=false">取消</button>
+        <button class="btn danger" :disabled="fileSaving" @click="discardAndLeave">不保存</button>
+        <button class="btn primary" :disabled="fileSaving" @click="saveAndLeave">
+          {{ fileSaving ? '保存中' : '保存' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" v-if="folderPickerOpen" @click.self="folderPickerOpen=false">
+    <div class="modal folder-picker-modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <div>
+          <h2>选择原文件保存路径</h2>
+          <p>逐级进入并选择服务器上已存在的文件夹。</p>
+        </div>
+        <button type="button" class="icon-button" aria-label="关闭" @click="folderPickerOpen=false">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="folder-current-row">
+        <button
+          type="button"
+          class="kb-icon-btn"
+          :disabled="!folderPickerParent || folderPickerLoading"
+          title="上一级"
+          @click="chooseFolderParent">
+          <i data-lucide="arrow-up"></i>
+        </button>
+        <input readonly :value="folderPickerCurrent" aria-label="当前文件夹">
+      </div>
+      <div class="folder-roots" v-if="folderPickerRoots.length">
+        <button
+          type="button"
+          class="folder-root"
+          v-for="root in folderPickerRoots"
+          :key="root"
+          @click="chooseFolder(root)">
+          <i data-lucide="hard-drive"></i>
+          {{ root }}
+        </button>
+      </div>
+      <div class="folder-list">
+        <div class="folder-list-state" v-if="folderPickerLoading">
+          <i data-lucide="loader-circle" class="spin"></i>
+          正在读取文件夹…
+        </div>
+        <div class="folder-list-state error" v-else-if="folderPickerError">
+          {{ folderPickerError }}
+        </div>
+        <button
+          type="button"
+          class="folder-item"
+          v-for="directory in folderPickerDirectories"
+          :key="directory.path"
+          @click="chooseFolder(directory.path)">
+          <i data-lucide="folder"></i>
+          <span>{{ directory.name }}</span>
+          <i data-lucide="chevron-right"></i>
+        </button>
+        <div
+          class="folder-list-state"
+          v-if="!folderPickerLoading && !folderPickerError && !folderPickerDirectories.length">
+          当前文件夹没有子文件夹
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" @click="folderPickerOpen=false">取消</button>
+        <button
+          type="button"
+          class="btn primary"
+          :disabled="!folderPickerCurrent || folderPickerLoading"
+          @click="confirmFolderSelection">
+          <i data-lucide="check"></i>
+          选择当前文件夹
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" :class="toast.type" v-if="toast.message">
     <i :data-lucide="toast.type==='error' ? 'circle-alert' : 'circle-check'"></i>
     <span>{{ toast.message }}</span>
@@ -1547,7 +1758,7 @@ createApp({
       docSortDir: 'desc',
       docView: 'detail',
       settingsOpen: false,
-      kbEditForm: { name: '', description: '' },
+      kbEditForm: { name: '', description: '', sourcePath: '' },
       kbSaving: false,
       kbSaveError: '',
       documentViewerOpen: false,
@@ -1555,6 +1766,24 @@ createApp({
       documentContent: null,
       documentContentLoading: false,
       documentContentError: '',
+      fileEditing: false,
+      fileSaving: false,
+      fileEditText: '',
+      fileOriginalText: '',
+      fileEditError: '',
+      editConfirmOpen: false,
+      leaveDialogOpen: false,
+      leaveDialogAction: 'close',
+      kbStoragePath: '',
+      kbStorageLoading: false,
+      kbStorageError: '',
+      folderPickerOpen: false,
+      folderPickerCurrent: '',
+      folderPickerParent: null,
+      folderPickerDirectories: [],
+      folderPickerRoots: [],
+      folderPickerLoading: false,
+      folderPickerError: '',
       selectedKbIds: [],
       selectionInitialized: false,
       messages: [],
@@ -1581,6 +1810,7 @@ createApp({
       },
       toast: { message: '', type: 'success' },
       toastTimer: null,
+      serviceOnline: false,
       healthText: '正在连接服务'
     };
   },
@@ -1592,6 +1822,9 @@ createApp({
       if (this.documentViewerOpen && this.viewerDoc) return this.viewerDoc.name;
       if (this.settingsOpen && this.currentKb) return '知识库设置';
       return '知识库';
+    },
+    fileEditDirty() {
+      return this.fileEditing && this.fileEditText !== this.fileOriginalText;
     },
     filteredDocuments() {
       return DocUtils.filterAndSortDocuments(
@@ -1671,8 +1904,10 @@ createApp({
       this.loading = true;
       try {
         await this.loadKnowledgeBases();
+        this.serviceOnline = true;
         this.healthText = '服务已连接';
       } catch (error) {
+        this.serviceOnline = false;
         this.healthText = '服务连接失败';
         this.notify(error.message, 'error');
       } finally {
@@ -1705,12 +1940,22 @@ createApp({
       this.documents = await this.api('/api/knowledge-bases/' + this.currentKbId + '/documents');
     },
     showChat() {
+      if (this.fileEditDirty) {
+        this.leaveDialogAction = 'chat';
+        this.leaveDialogOpen = true;
+        return;
+      }
       this.view = 'chat';
       this.scopeOpen = false;
       this.closeMenus();
       this.$nextTick(() => this.focusQuestion());
     },
     showLibrary() {
+      if (this.fileEditDirty) {
+        this.leaveDialogAction = 'library';
+        this.leaveDialogOpen = true;
+        return;
+      }
       this.view = 'library';
       this.scopeOpen = false;
       this.settingsOpen = false;
@@ -1742,21 +1987,69 @@ createApp({
       this.settingsOpen = false;
       this.closeDocumentViewer();
     },
-    openKbSettings() {
+    async openKbSettings() {
       if (!this.currentKb) return;
       this.kbEditForm = {
         name: this.currentKb.name,
-        description: this.currentKb.description || ''
+        description: this.currentKb.description || '',
+        sourcePath: ''
       };
       this.kbSaveError = '';
       this.closeMenus();
       this.settingsOpen = true;
+      this.kbStoragePath = '';
+      this.kbStorageError = '';
+      this.kbStorageLoading = true;
+      try {
+        const storage = await this.api(
+          '/api/knowledge-bases/' + this.currentKb.id + '/storage');
+        this.kbStoragePath = storage.path || '';
+        this.kbEditForm.sourcePath = storage.path || '';
+      } catch (error) {
+        this.kbStorageError = error.message;
+      } finally {
+        this.kbStorageLoading = false;
+      }
     },
     closeKbSettings() {
       if (this.kbSaving) return;
       this.settingsOpen = false;
       this.kbSaveError = '';
+      this.kbStoragePath = '';
+      this.kbStorageError = '';
       this.docQuery = '';
+    },
+    async pickKbStoragePath() {
+      this.folderPickerOpen = true;
+      await this.loadDirectory(this.kbEditForm.sourcePath);
+    },
+    async loadDirectory(path) {
+      this.folderPickerLoading = true;
+      this.folderPickerError = '';
+      try {
+        const query = path ? '?path=' + encodeURIComponent(path) : '';
+        const result = await this.api('/api/settings/directories' + query);
+        this.folderPickerCurrent = result.current || '';
+        this.folderPickerParent = result.parent || null;
+        this.folderPickerDirectories = result.directories || [];
+        this.folderPickerRoots = result.roots || [];
+      } catch (error) {
+        this.folderPickerError = error.message;
+      } finally {
+        this.folderPickerLoading = false;
+      }
+    },
+    chooseFolder(path) {
+      return this.loadDirectory(path);
+    },
+    chooseFolderParent() {
+      if (this.folderPickerParent) return this.loadDirectory(this.folderPickerParent);
+    },
+    confirmFolderSelection() {
+      if (!this.folderPickerCurrent) return;
+      this.kbEditForm.sourcePath = this.folderPickerCurrent;
+      this.kbStoragePath = this.folderPickerCurrent;
+      this.folderPickerOpen = false;
     },
     async saveKbSettings() {
       if (!this.currentKb || this.kbSaving || !this.kbEditForm.name.trim()) return;
@@ -1768,7 +2061,8 @@ createApp({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: this.kbEditForm.name.trim(),
-            description: this.kbEditForm.description.trim()
+            description: this.kbEditForm.description.trim(),
+            sourcePath: this.kbEditForm.sourcePath
           })
         });
         this.knowledgeBases = this.knowledgeBases.map(item =>
@@ -1785,6 +2079,13 @@ createApp({
       this.closeMenus();
       this.documentViewerOpen = true;
       this.viewerDoc = doc;
+      this.fileEditing = false;
+      this.fileSaving = false;
+      this.fileEditText = '';
+      this.fileOriginalText = '';
+      this.fileEditError = '';
+      this.editConfirmOpen = false;
+      this.leaveDialogOpen = false;
       this.documentContent = null;
       this.documentContentError = '';
       this.documentContentLoading = true;
@@ -1796,12 +2097,102 @@ createApp({
         this.documentContentLoading = false;
       }
     },
+    requestCloseDocumentViewer() {
+      if (this.fileEditDirty) {
+        this.leaveDialogAction = 'close';
+        this.leaveDialogOpen = true;
+      } else {
+        this.closeDocumentViewer();
+      }
+    },
     closeDocumentViewer() {
       this.documentViewerOpen = false;
       this.viewerDoc = null;
       this.documentContent = null;
       this.documentContentError = '';
       this.documentContentLoading = false;
+      this.fileEditing = false;
+      this.fileSaving = false;
+      this.fileEditText = '';
+      this.fileOriginalText = '';
+      this.fileEditError = '';
+      this.editConfirmOpen = false;
+      this.leaveDialogOpen = false;
+    },
+    beginFileEdit() {
+      if (!this.documentContent || !this.documentContent.editable) {
+        this.editConfirmOpen = false;
+        return;
+      }
+      this.editConfirmOpen = false;
+      this.fileEditing = true;
+      this.fileSaving = false;
+      this.fileEditText = this.documentContent.rawText || '';
+      this.fileOriginalText = this.fileEditText;
+      this.fileEditError = '';
+    },
+    requestCancelFileEdit() {
+      if (this.fileEditDirty) {
+        this.leaveDialogAction = 'cancel-edit';
+        this.leaveDialogOpen = true;
+      } else {
+        this.fileEditing = false;
+      }
+    },
+    async saveFileEdit(stayInViewer = false) {
+      if (!this.fileEditing || !this.viewerDoc || this.fileSaving) return false;
+      this.fileSaving = true;
+      this.fileEditError = '';
+      try {
+        const updated = await this.api(
+          '/api/docs/' + this.viewerDoc.id + '/content',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: this.fileEditText })
+          });
+        this.documentContent = updated;
+        this.viewerDoc = updated.document;
+        this.fileOriginalText = updated.rawText || '';
+        this.fileEditText = this.fileOriginalText;
+        this.fileEditing = false;
+        this.notify('文件已保存并重新建立索引');
+        await this.loadKnowledgeBases();
+        return true;
+      } catch (error) {
+        this.fileEditError = error.message;
+        return false;
+      } finally {
+        this.fileSaving = false;
+      }
+    },
+    async saveAndLeave() {
+      const action = this.leaveDialogAction;
+      const saved = await this.saveFileEdit(true);
+      if (!saved) return;
+      this.leaveDialogOpen = false;
+      this.applyLeaveAction(action);
+    },
+    discardAndLeave() {
+      const action = this.leaveDialogAction;
+      this.leaveDialogOpen = false;
+      this.fileEditing = false;
+      this.fileEditText = this.fileOriginalText;
+      this.fileEditError = '';
+      this.applyLeaveAction(action);
+    },
+    applyLeaveAction(action) {
+      if (action === 'chat') {
+        this.closeDocumentViewer();
+        this.showChat();
+      } else if (action === 'library') {
+        this.closeDocumentViewer();
+        this.showLibrary();
+      } else if (action === 'cancel-edit') {
+        this.fileEditing = false;
+      } else {
+        this.closeDocumentViewer();
+      }
     },
     fileExtLabel(name) {
       const extension = DocUtils.extensionOf(name);
@@ -1834,12 +2225,18 @@ createApp({
       if (event.key !== 'Escape') return;
       if (this.openMenu) {
         this.closeMenus();
+      } else if (this.folderPickerOpen) {
+        this.folderPickerOpen = false;
+      } else if (this.leaveDialogOpen) {
+        this.leaveDialogOpen = false;
+      } else if (this.editConfirmOpen) {
+        this.editConfirmOpen = false;
       } else if (this.confirmDialog.open) {
         this.closeConfirm();
       } else if (this.showCreate) {
         this.closeCreate();
       } else if (this.documentViewerOpen) {
-        this.closeDocumentViewer();
+        this.requestCloseDocumentViewer();
       } else if (this.settingsOpen) {
         this.closeKbSettings();
       } else if (this.scopeOpen) {
@@ -2073,7 +2470,11 @@ createApp({
           }
         }
       } catch (error) {
-        ai.text = ai.text || ('请求失败：' + error.message);
+        const message = /Failed to fetch|NetworkError|Load failed|fetch failed/i.test(
+          String(error && error.message || ''))
+          ? '无法连接到服务，请确认后端已启动'
+          : error.message;
+        ai.text = ai.text || ('请求失败：' + message);
       } finally {
         this.busy = false;
         this.stages = [];

@@ -2,6 +2,7 @@ package com.example.docinsight.service;
 
 import com.example.docinsight.model.Chunk;
 import com.example.docinsight.model.DocumentInfo;
+import com.example.docinsight.model.KnowledgeBase;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -42,12 +43,15 @@ public class DocumentIngestionService {
         if (file.getSize() > 50L * 1024 * 1024) {
             throw new IllegalArgumentException("文档单文件不能超过 50MB");
         }
-        if (knowledgeBaseId != null && store.getKnowledgeBase(knowledgeBaseId) == null) {
+        KnowledgeBase knowledgeBase = knowledgeBaseId == null
+                ? null : store.getKnowledgeBase(knowledgeBaseId);
+        if (knowledgeBaseId != null && knowledgeBase == null) {
             throw new IllegalArgumentException("知识库不存在");
         }
 
         String docId = UUID.randomUUID().toString().substring(0, 8);
-        String sourcePath = sourceStorage.store(file, docId, name);
+        String sourcePath = sourceStorage.store(file, docId, name,
+                knowledgeBase == null ? null : knowledgeBase.sourceDir());
         try {
             DocumentParser.Parsed parsed;
             try (InputStream input = Files.newInputStream(sourceStorage.path(sourcePath))) {

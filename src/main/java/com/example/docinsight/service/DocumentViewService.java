@@ -32,28 +32,33 @@ public class DocumentViewService {
         DocumentFormat format = DocumentFormat.fromFilename(document.name())
                 .orElse(DocumentFormat.TEXT);
         String sourcePath = store.sourcePath(docId);
-        boolean sourceAvailable = sourcePath != null;
+        Path sourceFile = sourcePath == null ? null : sourceStorage.path(sourcePath);
+        boolean sourceAvailable = sourceFile != null && Files.isRegularFile(sourceFile);
+        String sourceStatus = sourcePath == null
+                ? "OLD_VERSION" : (sourceAvailable ? "AVAILABLE" : "MISSING");
+        boolean editable = sourceAvailable
+                && (format == DocumentFormat.MARKDOWN || format == DocumentFormat.TEXT);
         List<DocumentContentView.Section> sections = store.chunks(docId).stream()
                 .map(this::section)
                 .toList();
 
         if (format.isVideo()) {
-            return new DocumentContentView(document, "video", true,
+            return new DocumentContentView(document, "video", true, "AVAILABLE", false,
                     "/api/docs/" + docId + "/media", null, sections);
         }
         if (format == DocumentFormat.PDF && sourceAvailable) {
-            return new DocumentContentView(document, "pdf", true,
+            return new DocumentContentView(document, "pdf", true, sourceStatus, false,
                     "/api/docs/" + docId + "/source", null, sections);
         }
         if ((format == DocumentFormat.MARKDOWN || format == DocumentFormat.TEXT)
                 && sourceAvailable) {
-            String raw = readInlineText(sourceStorage.path(sourcePath));
+            String raw = readInlineText(sourceFile);
             if (raw != null) {
-                return new DocumentContentView(document, "text", true,
+                return new DocumentContentView(document, "text", true, sourceStatus, editable,
                         "/api/docs/" + docId + "/source", raw, sections);
             }
         }
-        return new DocumentContentView(document, "sections", sourceAvailable,
+        return new DocumentContentView(document, "sections", sourceAvailable, sourceStatus, false,
                 sourceAvailable ? "/api/docs/" + docId + "/source" : null,
                 null, sections);
     }

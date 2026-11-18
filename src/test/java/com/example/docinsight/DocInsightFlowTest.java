@@ -77,6 +77,29 @@ class DocInsightFlowTest {
         assertThat(source.statusCode()).isEqualTo(200);
         assertThat(source.body()).isEqualTo(fileBytes);
 
+        String editedContent = new String(fileBytes, StandardCharsets.UTF_8)
+                + "\n\n## 编辑验证\n这份内容由文件查看页保存。\n";
+        String editJson = mapper.writeValueAsString(
+                java.util.Map.of("text", editedContent));
+        HttpResponse<String> edit = http.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port
+                                + "/api/docs/" + docId + "/content"))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(editJson, StandardCharsets.UTF_8))
+                .timeout(Duration.ofSeconds(30))
+                .build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertThat(edit.statusCode()).isEqualTo(200);
+        assertThat(edit.body()).contains("编辑验证").contains("\"editable\":true");
+
+        HttpResponse<byte[]> editedSource = http.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port
+                                + "/api/docs/" + docId + "/source"))
+                .GET()
+                .timeout(Duration.ofSeconds(20))
+                .build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(new String(editedSource.body(), StandardCharsets.UTF_8))
+                .contains("编辑验证");
+
         HttpResponse<String> ask = http.send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + port + "/api/ask"))
                 .header("Content-Type", "application/json")

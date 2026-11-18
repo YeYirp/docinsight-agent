@@ -6,6 +6,8 @@ public record DocumentContentView(
         DocumentInfo document,
         String mode,
         boolean sourceAvailable,
+        String sourceStatus,
+        boolean editable,
         String contentUrl,
         String rawText,
         List<Section> sections

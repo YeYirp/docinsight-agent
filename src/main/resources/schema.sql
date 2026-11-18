@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     name_key TEXT NOT NULL UNIQUE,
     description TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    source_dir TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS document (
