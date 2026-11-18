@@ -3,9 +3,11 @@ package com.example.docinsight.controller;
 import com.example.docinsight.model.CreateKnowledgeBaseInput;
 import com.example.docinsight.model.DocumentInfo;
 import com.example.docinsight.model.KnowledgeBase;
+import com.example.docinsight.model.UpdateKnowledgeBaseInput;
 import com.example.docinsight.model.VideoIngestionJob;
 import com.example.docinsight.service.DocumentFormat;
 import com.example.docinsight.service.DocumentIngestionService;
+import com.example.docinsight.service.DocumentSourceStorage;
 import com.example.docinsight.service.DocumentStore;
 import com.example.docinsight.service.VideoIngestionJobService;
 import com.example.docinsight.service.VideoStorage;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -37,13 +40,16 @@ public class KnowledgeBaseController {
     private final DocumentIngestionService ingestion;
     private final VideoIngestionJobService videoJobs;
     private final VideoStorage videoStorage;
+    private final DocumentSourceStorage sourceStorage;
 
     public KnowledgeBaseController(DocumentStore store, DocumentIngestionService ingestion,
-                                   VideoIngestionJobService videoJobs, VideoStorage videoStorage) {
+                                   VideoIngestionJobService videoJobs, VideoStorage videoStorage,
+                                   DocumentSourceStorage sourceStorage) {
         this.store = store;
         this.ingestion = ingestion;
         this.videoJobs = videoJobs;
         this.videoStorage = videoStorage;
+        this.sourceStorage = sourceStorage;
     }
 
     @GetMapping
@@ -62,12 +68,21 @@ public class KnowledgeBaseController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @PutMapping("/{id}")
+    public KnowledgeBase update(@PathVariable String id,
+                                @Valid @RequestBody UpdateKnowledgeBaseInput input) {
+        requireKnowledgeBase(id);
+        return store.updateKnowledgeBase(id, input.name(), input.description());
+    }
+
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable String id) {
         KnowledgeBase existing = requireKnowledgeBase(id);
         List<String> mediaPaths = store.mediaPathsForKnowledgeBase(id);
+        List<String> sourcePaths = store.sourcePathsForKnowledgeBase(id);
         store.removeKnowledgeBase(id);
         mediaPaths.forEach(videoStorage::delete);
+        sourcePaths.forEach(sourceStorage::delete);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("deleted", id);
         body.put("documents", existing.documentCount());

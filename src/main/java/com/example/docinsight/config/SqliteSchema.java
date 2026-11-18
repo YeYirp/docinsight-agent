@@ -21,11 +21,30 @@ public final class SqliteSchema {
                 new ClassPathResource("schema.sql"));
         populator.execute(dataSource);
         ensureDocumentCreatedAt(jdbc);
+        ensureKnowledgeBaseUpdatedAt(jdbc);
         ensureDocumentMediaColumns(jdbc);
+        ensureDocumentSourceColumn(jdbc);
         ensureContentlessFts(jdbc);
         initializeFtsTriggers(jdbc);
         initializeVectorTable(jdbc, vectorDimension);
         jdbc.execute("PRAGMA optimize");
+    }
+
+    private static void ensureKnowledgeBaseUpdatedAt(JdbcTemplate jdbc) {
+        List<String> columns = jdbc.queryForList(
+                "SELECT name FROM pragma_table_info('knowledge_base')", String.class);
+        if (!columns.contains("updated_at")) {
+            jdbc.execute("ALTER TABLE knowledge_base ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+        }
+        jdbc.update("""
+                UPDATE knowledge_base
+                SET updated_at = COALESCE(
+                    (SELECT MAX(d.created_at)
+                     FROM document d
+                     WHERE d.knowledge_base_id = knowledge_base.id),
+                    created_at)
+                WHERE updated_at = 0
+                """);
     }
 
     /** 兼容旧版本数据库：document 表早期没有上传时间字段。 */
@@ -59,6 +78,14 @@ public final class SqliteSchema {
         }
         if (!columns.contains("duration_ms")) {
             jdbc.execute("ALTER TABLE document ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0");
+        }
+    }
+
+    private static void ensureDocumentSourceColumn(JdbcTemplate jdbc) {
+        List<String> columns = jdbc.queryForList(
+                "SELECT name FROM pragma_table_info('document')", String.class);
+        if (!columns.contains("source_path")) {
+            jdbc.execute("ALTER TABLE document ADD COLUMN source_path TEXT");
         }
     }
 

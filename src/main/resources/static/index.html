@@ -320,6 +320,12 @@
   .file-icon{width:36px;height:36px;border-radius:8px;background:#f0f3f0;color:#58645d;display:grid;place-items:center}
   .file-icon .lucide{width:17px;height:17px}
   .doc-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .doc-name-button{
+    border:0;background:transparent;padding:0;text-align:left;color:var(--ink);
+    display:block;width:100%;max-width:100%;cursor:pointer;font:inherit;border-radius:3px;
+  }
+  .doc-name-button:hover{color:var(--green-dark);text-decoration:underline}
+  .doc-name-button:focus-visible{outline:2px solid rgba(30,138,91,.35);outline-offset:2px}
   .doc-meta{font-size:12.5px;color:var(--muted);margin-top:3px}
   .doc-play{margin-left:8px;color:var(--green-dark);font-weight:600;text-decoration:none}
   .doc-play:hover{text-decoration:underline}
@@ -333,7 +339,8 @@
   .doc-card{
     min-height:132px;border:1px solid var(--line);border-radius:8px;background:#fff;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;
-    padding:16px 13px;text-align:center;color:var(--ink);transition:border-color .16s ease,box-shadow .16s ease;
+    padding:16px 13px;text-align:center;color:var(--ink);cursor:pointer;font:inherit;
+    transition:border-color .16s ease,box-shadow .16s ease;
   }
   .doc-card:hover{border-color:#b9c6bd;box-shadow:0 8px 22px rgba(24,35,29,.06)}
   .doc-card .file-icon{width:44px;height:44px;border-radius:10px}
@@ -362,6 +369,79 @@
   .settings-placeholder .chat-empty-symbol{margin-bottom:16px}
   .settings-placeholder h2{font-size:23px;margin:0 0 8px;font-weight:700}
   .settings-placeholder p{margin:0;color:var(--muted);font-size:13.5px}
+  .kb-settings-page{max-width:780px;margin:0 auto}
+  .kb-settings-intro{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  .kb-settings-intro-icon{
+    width:46px;height:46px;border-radius:12px;background:var(--green-soft);color:var(--green-dark);
+    display:grid;place-items:center;flex:0 0 auto;
+  }
+  .kb-settings-intro-icon .lucide{width:22px;height:22px}
+  .kb-settings-intro h2{font-size:23px;margin:0 0 4px}
+  .kb-settings-intro p{margin:0;color:var(--muted);font-size:13px}
+  .kb-settings-card{
+    border:1px solid var(--line);border-radius:10px;background:#fff;padding:24px;
+    box-shadow:0 1px 2px rgba(23,32,29,.03);
+  }
+  .kb-settings-card .field{margin-bottom:20px}
+  .kb-settings-card .field textarea{min-height:110px}
+  .kb-settings-meta{
+    display:flex;gap:14px;flex-wrap:wrap;margin:0 0 22px;padding:12px 14px;
+    background:#f8faf8;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:12.5px;
+  }
+  .kb-settings-actions{display:flex;justify-content:flex-end;gap:10px}
+  .doc-viewer-page{max-width:1180px;margin:0 auto}
+  .doc-viewer-topline{display:flex;align-items:center;gap:10px;margin-bottom:18px;min-width:0}
+  .doc-viewer-breadcrumb{
+    display:flex;align-items:center;gap:7px;min-width:0;color:var(--muted);font-size:13.5px;
+  }
+  .doc-viewer-breadcrumb strong{
+    color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .doc-viewer-top-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .doc-viewer-shell{
+    border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden;
+    box-shadow:0 1px 2px rgba(23,32,29,.03);
+  }
+  .doc-viewer-head{
+    display:flex;align-items:center;gap:14px;padding:18px 22px;border-bottom:1px solid var(--line);
+    background:#fbfcfb;
+  }
+  .doc-viewer-head .file-icon{width:44px;height:44px;border-radius:10px}
+  .doc-viewer-title{flex:1;min-width:0}
+  .doc-viewer-title h2{
+    font-size:18px;margin:0 0 4px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .doc-viewer-meta{
+    width:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:12px;
+  }
+  .doc-viewer-legacy-note{
+    margin-left:auto;color:#a66b38;font-size:12px;line-height:1.55;text-align:right;
+  }
+  .doc-viewer-tag{border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 8px}
+  .doc-viewer-body{padding:22px;min-height:300px}
+  .doc-viewer-pdf{width:100%;height:min(72vh,780px);border:0;border-radius:8px;background:#f4f5f3}
+  .doc-viewer-video{
+    display:block;width:100%;max-height:72vh;border-radius:8px;background:#111;
+  }
+  .doc-viewer-text{
+    margin:0;padding:22px;border:1px solid var(--line);border-radius:8px;background:#fcfdfc;
+    color:var(--ink);white-space:pre-wrap;word-break:break-word;font:14px/1.85 "Microsoft YaHei",monospace;
+    max-height:72vh;overflow:auto;
+  }
+  .doc-sections{display:flex;flex-direction:column;gap:12px}
+  .doc-section{border:1px solid var(--line);border-radius:8px;background:#fcfdfc;padding:15px 17px}
+  .doc-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px}
+  .doc-section-head strong{font-size:13px;color:var(--ink)}
+  .doc-section-head span{font-size:11.5px;color:var(--faint);white-space:nowrap}
+  .doc-section p{margin:0;color:#404a44;font-size:13.5px;line-height:1.8;white-space:pre-wrap}
+  .doc-viewer-note{
+    margin-top:15px;border:1px solid #d9e8de;border-radius:8px;background:#f6fbf8;
+    color:#39745a;padding:10px 13px;font-size:12.5px;line-height:1.65;
+  }
+  .doc-viewer-empty{padding:60px 20px;text-align:center;color:var(--muted)}
+  .doc-viewer-empty strong{display:block;color:var(--ink);font-size:16px;margin-bottom:6px}
+  .doc-viewer-empty .lucide{width:22px;height:22px;color:var(--green);margin-bottom:8px}
+  .spin{animation:spin 1s linear infinite}
   .upload-zone{
     border:1px dashed #cbd5ce;border-radius:8px;padding:25px 18px;text-align:center;
     background:#fbfcfb;color:var(--muted);font-size:13.5px;margin-top:16px;cursor:pointer;
@@ -680,6 +760,15 @@
     .kb-panel{min-height:0}
     .kb-empty{min-height:320px;padding:36px 16px}
     .kb-upload-hint{display:none}
+    .kb-settings-card{padding:18px}
+    .kb-settings-actions .btn{flex:1}
+    .doc-viewer-topline{flex-wrap:wrap}
+    .doc-viewer-breadcrumb{flex:1;min-width:0}
+    .doc-viewer-head{padding:14px;align-items:flex-start}
+    .doc-viewer-body{padding:14px}
+    .doc-viewer-pdf{height:65vh}
+    .doc-viewer-text{padding:16px;font-size:13px}
+    .doc-viewer-top-actions{margin-left:0;flex:1 1 100%;justify-content:flex-end}
   }
 </style>
 </head>
@@ -741,7 +830,7 @@
   <main class="workspace">
     <header class="workspace-head">
       <div class="workspace-title">
-        <i :data-lucide="view==='chat' ? 'message-square-text' : (settingsOpen ? 'settings' : 'library')"></i>
+        <i :data-lucide="view==='chat' ? 'message-square-text' : (documentViewerOpen ? 'file-text' : (settingsOpen ? 'settings' : 'library'))"></i>
         <h1>{{ view==='chat' ? '新对话' : pageTitle }}</h1>
       </div>
       <div class="head-actions">
@@ -949,17 +1038,164 @@
           </template>
 
           <template v-else>
-            <template v-if="settingsOpen">
+            <template v-if="documentViewerOpen">
+              <div class="doc-viewer-page">
+                <div class="doc-viewer-topline">
+                  <button
+                    class="kb-back"
+                    title="返回知识库"
+                    aria-label="返回知识库"
+                    @click="closeDocumentViewer">
+                    <i data-lucide="arrow-left"></i>
+                  </button>
+                  <div class="doc-viewer-breadcrumb">
+                    <span>知识库</span>
+                    <i class="kb-crumb-sep" data-lucide="chevron-right"></i>
+                    <span>{{ currentKb.name }}</span>
+                    <i class="kb-crumb-sep" data-lucide="chevron-right"></i>
+                    <strong>{{ viewerDoc?.name || '' }}</strong>
+                  </div>
+                  <div class="doc-viewer-top-actions">
+                    <a
+                      v-if="documentContent && (documentContent.sourceAvailable || documentContent.mode==='video')"
+                      class="btn small"
+                      :href="documentContent.contentUrl"
+                      target="_blank"
+                      rel="noopener">
+                      <i data-lucide="download"></i>
+                      {{ documentContent.mode==='video' ? '下载视频' : '下载原件' }}
+                    </a>
+                  </div>
+                </div>
+
+                <div class="doc-viewer-shell">
+                  <div class="doc-viewer-head">
+                    <span class="file-icon" :class="fileIconClass(viewerDoc?.name)">
+                      <i data-lucide="file-text"></i>
+                    </span>
+                    <div class="doc-viewer-title">
+                      <h2>{{ viewerDoc?.name }}</h2>
+                      <div class="doc-viewer-meta" v-if="viewerDoc">
+                        <span class="doc-viewer-tag">{{ fileExtLabel(viewerDoc.name) }}</span>
+                        <span>{{ formatSize(viewerDoc.sizeBytes) }}</span>
+                        <span>{{ formatDateTime(viewerDoc.createdAt) }}</span>
+                        <span v-if="viewerDoc.media">{{ formatDuration(viewerDoc.durationMs) }}</span>
+                        <span v-else>{{ viewerDoc.pages }} 页</span>
+                        <span>{{ viewerDoc.chunks }} 个索引块</span>
+                        <span
+                          class="doc-viewer-legacy-note"
+                          v-if="documentContent && documentContent.mode==='sections' && !documentContent.sourceAvailable">
+                          该文档上传于旧版本，仅保留了索引文本，暂时无法查看原始文件。
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="doc-viewer-body">
+                    <div class="doc-viewer-empty" v-if="documentContentLoading">
+                      <i data-lucide="loader-circle" class="spin"></i>
+                      <strong>正在读取文件</strong>
+                      请稍候…
+                    </div>
+                    <div class="doc-viewer-empty" v-else-if="documentContentError">
+                      <strong>无法打开文件</strong>
+                      {{ documentContentError }}
+                    </div>
+                    <template v-else-if="documentContent">
+                      <video
+                        v-if="documentContent.mode==='video'"
+                        class="doc-viewer-video"
+                        :src="documentContent.contentUrl"
+                        controls
+                        preload="metadata"></video>
+                      <iframe
+                        v-else-if="documentContent.mode==='pdf'"
+                        class="doc-viewer-pdf"
+                        :src="documentContent.contentUrl"
+                        :title="documentContent.document.name"></iframe>
+                      <pre
+                        v-else-if="documentContent.mode==='text'"
+                        class="doc-viewer-text">{{ documentContent.rawText }}</pre>
+                      <div class="doc-sections" v-else>
+                        <div
+                          class="doc-section"
+                          v-for="(section, index) in documentContent.sections"
+                          :key="index">
+                          <div class="doc-section-head">
+                            <strong>{{ section.heading || '正文' }}</strong>
+                            <span v-if="section.location">{{ section.location }}</span>
+                          </div>
+                          <p>{{ section.text }}</p>
+                        </div>
+                        <div class="doc-viewer-empty" v-if="!documentContent.sections.length">
+                          <strong>没有可展示的内容</strong>
+                          该文件可能没有成功解析出文本。
+                        </div>
+                      </div>
+
+                      <div
+                        class="doc-viewer-note"
+                        v-if="documentContent.mode==='sections' && documentContent.sourceAvailable">
+                        该文件以已解析文本展示，保留标题层级和段落位置；可以下载原件查看完整内容。
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="settingsOpen">
               <div class="detail-nav">
                 <button class="back-button" @click="closeKbSettings">
                   <i data-lucide="arrow-left"></i>
                   <span>返回知识库</span>
                 </button>
               </div>
-              <div class="settings-placeholder">
-                <div class="chat-empty-symbol"><i data-lucide="settings"></i></div>
-                <h2>{{ currentKb.name }} · 设置</h2>
-                <p>等待更新</p>
+              <div class="kb-settings-page">
+                <div class="kb-settings-intro">
+                  <div class="kb-settings-intro-icon"><i data-lucide="settings"></i></div>
+                  <div>
+                    <h2>知识库设置</h2>
+                    <p>修改知识库的显示名称和描述，不会影响已有文档和索引。</p>
+                  </div>
+                </div>
+                <form class="kb-settings-card" @submit.prevent="saveKbSettings">
+                  <div class="kb-settings-meta">
+                    <span>{{ currentKb.documentCount }} 篇文档</span>
+                    <span>{{ currentKb.chunkCount }} 个索引块</span>
+                    <span>创建于 {{ formatDateTime(currentKb.createdAt) }}</span>
+                  </div>
+                  <div class="field">
+                    <label for="edit-kb-name">知识库名称</label>
+                    <input
+                      id="edit-kb-name"
+                      v-model="kbEditForm.name"
+                      maxlength="60"
+                      autocomplete="off"
+                      placeholder="例如：产品运维手册">
+                  </div>
+                  <div class="field">
+                    <label for="edit-kb-description">描述</label>
+                    <textarea
+                      id="edit-kb-description"
+                      v-model="kbEditForm.description"
+                      maxlength="240"
+                      rows="4"
+                      placeholder="简要说明这个知识库包含哪些资料"></textarea>
+                    <span class="field-hint">{{ kbEditForm.description.length }}/240</span>
+                  </div>
+                  <div class="form-error" v-if="kbSaveError">{{ kbSaveError }}</div>
+                  <div class="kb-settings-actions">
+                    <button type="button" class="btn" :disabled="kbSaving" @click="closeKbSettings">取消</button>
+                    <button
+                      type="submit"
+                      class="btn primary"
+                      :disabled="kbSaving || !kbEditForm.name.trim()">
+                      <i data-lucide="check"></i>
+                      {{ kbSaving ? '保存中' : '保存修改' }}
+                    </button>
+                  </div>
+                </form>
               </div>
             </template>
 
@@ -1130,7 +1366,13 @@
                           <i data-lucide="file-text"></i>
                         </span>
                         <div>
-                          <div class="doc-name" :title="doc.name">{{ doc.name }}</div>
+                          <button
+                            type="button"
+                            class="doc-name doc-name-button"
+                            :title="'查看 ' + doc.name"
+                            @click="openDocumentViewer(doc)">
+                            {{ doc.name }}
+                          </button>
                           <div class="doc-meta">
                             <template v-if="isVideo(doc.name)">
                               {{ formatDuration(doc.durationMs) }} · {{ doc.chunks }} 个索引块
@@ -1153,12 +1395,18 @@
                     </div>
 
                     <div class="doc-grid kb-gallery" v-else>
-                      <div class="doc-card" v-for="doc in filteredDocuments" :key="doc.id" :title="doc.name">
+                      <button
+                        type="button"
+                        class="doc-card"
+                        v-for="doc in filteredDocuments"
+                        :key="doc.id"
+                        :title="'查看 ' + doc.name"
+                        @click="openDocumentViewer(doc)">
                         <span class="file-icon" :class="fileIconClass(doc.name)">
                           <i data-lucide="file-text"></i>
                         </span>
                         <span class="doc-card-name">{{ doc.name }}</span>
-                      </div>
+                      </button>
                     </div>
                   </template>
 
@@ -1299,6 +1547,14 @@ createApp({
       docSortDir: 'desc',
       docView: 'detail',
       settingsOpen: false,
+      kbEditForm: { name: '', description: '' },
+      kbSaving: false,
+      kbSaveError: '',
+      documentViewerOpen: false,
+      viewerDoc: null,
+      documentContent: null,
+      documentContentLoading: false,
+      documentContentError: '',
       selectedKbIds: [],
       selectionInitialized: false,
       messages: [],
@@ -1333,6 +1589,7 @@ createApp({
       return this.knowledgeBases.find(item => item.id === this.currentKbId) || null;
     },
     pageTitle() {
+      if (this.documentViewerOpen && this.viewerDoc) return this.viewerDoc.name;
       if (this.settingsOpen && this.currentKb) return '知识库设置';
       return '知识库';
     },
@@ -1457,12 +1714,14 @@ createApp({
       this.view = 'library';
       this.scopeOpen = false;
       this.settingsOpen = false;
+      this.closeDocumentViewer();
       this.closeMenus();
     },
     async openKnowledgeBase(id) {
       this.currentKbId = id;
       this.view = 'library';
       this.settingsOpen = false;
+      this.closeDocumentViewer();
       this.closeMenus();
       this.docQuery = '';
       this.docSort = 'uploaded';
@@ -1481,15 +1740,72 @@ createApp({
       this.documents = [];
       this.docQuery = '';
       this.settingsOpen = false;
+      this.closeDocumentViewer();
     },
     openKbSettings() {
       if (!this.currentKb) return;
+      this.kbEditForm = {
+        name: this.currentKb.name,
+        description: this.currentKb.description || ''
+      };
+      this.kbSaveError = '';
       this.closeMenus();
       this.settingsOpen = true;
     },
     closeKbSettings() {
+      if (this.kbSaving) return;
       this.settingsOpen = false;
+      this.kbSaveError = '';
       this.docQuery = '';
+    },
+    async saveKbSettings() {
+      if (!this.currentKb || this.kbSaving || !this.kbEditForm.name.trim()) return;
+      this.kbSaving = true;
+      this.kbSaveError = '';
+      try {
+        const updated = await this.api('/api/knowledge-bases/' + this.currentKb.id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: this.kbEditForm.name.trim(),
+            description: this.kbEditForm.description.trim()
+          })
+        });
+        this.knowledgeBases = this.knowledgeBases.map(item =>
+          item.id === updated.id ? updated : item);
+        this.settingsOpen = false;
+        this.notify('知识库信息已更新');
+      } catch (error) {
+        this.kbSaveError = error.message;
+      } finally {
+        this.kbSaving = false;
+      }
+    },
+    async openDocumentViewer(doc) {
+      this.closeMenus();
+      this.documentViewerOpen = true;
+      this.viewerDoc = doc;
+      this.documentContent = null;
+      this.documentContentError = '';
+      this.documentContentLoading = true;
+      try {
+        this.documentContent = await this.api('/api/docs/' + doc.id + '/content');
+      } catch (error) {
+        this.documentContentError = error.message;
+      } finally {
+        this.documentContentLoading = false;
+      }
+    },
+    closeDocumentViewer() {
+      this.documentViewerOpen = false;
+      this.viewerDoc = null;
+      this.documentContent = null;
+      this.documentContentError = '';
+      this.documentContentLoading = false;
+    },
+    fileExtLabel(name) {
+      const extension = DocUtils.extensionOf(name);
+      return extension ? extension.toUpperCase() : 'FILE';
     },
     toggleDocSortDir() {
       this.docSortDir = this.docSortDir === 'asc' ? 'desc' : 'asc';
@@ -1522,6 +1838,10 @@ createApp({
         this.closeConfirm();
       } else if (this.showCreate) {
         this.closeCreate();
+      } else if (this.documentViewerOpen) {
+        this.closeDocumentViewer();
+      } else if (this.settingsOpen) {
+        this.closeKbSettings();
       } else if (this.scopeOpen) {
         this.scopeOpen = false;
       }

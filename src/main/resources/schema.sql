@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     name TEXT NOT NULL,
     name_key TEXT NOT NULL UNIQUE,
     description TEXT NOT NULL DEFAULT '',
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS document (
@@ -14,6 +15,7 @@ CREATE TABLE IF NOT EXISTS document (
     chunk_count INTEGER NOT NULL,
     size_bytes INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
+    source_path TEXT,
     media_path TEXT,
     duration_ms INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_base(id) ON DELETE CASCADE

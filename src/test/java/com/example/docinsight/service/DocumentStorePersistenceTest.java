@@ -178,8 +178,9 @@ class DocumentStorePersistenceTest {
                 )
                 """);
         jdbc.update("""
-                INSERT INTO knowledge_base(id, name, name_key, description, created_at)
-                VALUES ('kb-fts', '旧索引', '旧索引', '', 1)
+                INSERT INTO knowledge_base(
+                    id, name, name_key, description, created_at, updated_at)
+                VALUES ('kb-fts', '旧索引', '旧索引', '', 1, 1)
                 """);
         jdbc.update("""
                 INSERT INTO document(

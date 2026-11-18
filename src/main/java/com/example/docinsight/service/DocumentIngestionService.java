@@ -7,6 +7,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,11 +17,14 @@ public class DocumentIngestionService {
     private final DocumentParser parser;
     private final Chunker chunker;
     private final DocumentStore store;
+    private final DocumentSourceStorage sourceStorage;
 
-    public DocumentIngestionService(DocumentParser parser, Chunker chunker, DocumentStore store) {
+    public DocumentIngestionService(DocumentParser parser, Chunker chunker,
+                                    DocumentStore store, DocumentSourceStorage sourceStorage) {
         this.parser = parser;
         this.chunker = chunker;
         this.store = store;
+        this.sourceStorage = sourceStorage;
     }
 
     public DocumentInfo ingest(MultipartFile file, String knowledgeBaseId) throws IOException {
@@ -42,21 +46,27 @@ public class DocumentIngestionService {
             throw new IllegalArgumentException("知识库不存在");
         }
 
-        DocumentParser.Parsed parsed;
-        try (InputStream input = file.getInputStream()) {
-            parsed = parser.parse(name, input);
-        }
         String docId = UUID.randomUUID().toString().substring(0, 8);
-        List<Chunk> chunks = chunker.chunk(docId, name, parsed.blocks());
-        if (chunks.isEmpty()) {
-            throw new IllegalArgumentException("文档没有解析出有效内容");
-        }
+        String sourcePath = sourceStorage.store(file, docId, name);
+        try {
+            DocumentParser.Parsed parsed;
+            try (InputStream input = Files.newInputStream(sourceStorage.path(sourcePath))) {
+                parsed = parser.parse(name, input);
+            }
+            List<Chunk> chunks = chunker.chunk(docId, name, parsed.blocks());
+            if (chunks.isEmpty()) {
+                throw new IllegalArgumentException("文档没有解析出有效内容");
+            }
 
-        DocumentInfo info = new DocumentInfo(
-                docId, name, knowledgeBaseId, parsed.pages(), chunks.size(), file.getSize(),
-                System.currentTimeMillis());
-        store.save(info, chunks);
-        return info;
+            DocumentInfo info = new DocumentInfo(
+                    docId, name, knowledgeBaseId, parsed.pages(), chunks.size(), file.getSize(),
+                    System.currentTimeMillis());
+            store.save(info, chunks, sourcePath, null, 0);
+            return info;
+        } catch (IOException | RuntimeException error) {
+            sourceStorage.delete(sourcePath);
+            throw error;
+        }
     }
 
     private String cleanName(String originalName) {

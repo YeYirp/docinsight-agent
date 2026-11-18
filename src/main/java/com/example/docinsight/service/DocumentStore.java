@@ -45,9 +45,7 @@ public class DocumentStore {
 
     private static final String KNOWLEDGE_BASE_SELECT = """
             SELECT kb.id, kb.name, kb.description, kb.created_at,
-                   (SELECT COALESCE(MAX(d.created_at), kb.created_at)
-                    FROM document d
-                    WHERE d.knowledge_base_id = kb.id) AS updated_at,
+                   kb.updated_at,
                    (SELECT COUNT(*) FROM document d
                     WHERE d.knowledge_base_id = kb.id) AS document_count,
                    (SELECT COALESCE(SUM(d.chunk_count), 0) FROM document d
@@ -69,14 +67,41 @@ public class DocumentStore {
         String id = UUID.randomUUID().toString();
         try {
             jdbc.update("""
-                            INSERT INTO knowledge_base(id, name, name_key, description, created_at)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT INTO knowledge_base(
+                                id, name, name_key, description, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
                             """,
                     id,
                     normalizedName,
                     normalizedName.toLowerCase(Locale.ROOT),
                     description == null ? "" : description.trim(),
+                    System.currentTimeMillis(),
                     System.currentTimeMillis());
+        } catch (DataIntegrityViolationException error) {
+            throw new IllegalArgumentException("同名知识库已存在");
+        }
+        return getKnowledgeBase(id);
+    }
+
+    public KnowledgeBase updateKnowledgeBase(String id, String name, String description) {
+        String normalizedName = name == null ? "" : name.trim();
+        if (normalizedName.isBlank()) {
+            throw new IllegalArgumentException("知识库名称不能为空");
+        }
+        if (getKnowledgeBase(id) == null) {
+            return null;
+        }
+        try {
+            jdbc.update("""
+                    UPDATE knowledge_base
+                    SET name = ?, name_key = ?, description = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    normalizedName,
+                    normalizedName.toLowerCase(Locale.ROOT),
+                    description == null ? "" : description.trim(),
+                    System.currentTimeMillis(),
+                    id);
         } catch (DataIntegrityViolationException error) {
             throw new IllegalArgumentException("同名知识库已存在");
         }
@@ -136,25 +161,31 @@ public class DocumentStore {
 
     @Transactional
     public void save(DocumentInfo info, List<Chunk> chunks) {
-        doSave(info, chunks, null, info.durationMs());
+        doSave(info, chunks, null, null, info.durationMs());
     }
 
     @Transactional
     public void save(DocumentInfo info, List<Chunk> chunks,
                      String mediaPath, long durationMs) {
-        doSave(info, chunks, mediaPath, durationMs);
+        doSave(info, chunks, null, mediaPath, durationMs);
+    }
+
+    @Transactional
+    public void save(DocumentInfo info, List<Chunk> chunks, String sourcePath,
+                     String mediaPath, long durationMs) {
+        doSave(info, chunks, sourcePath, mediaPath, durationMs);
     }
 
     private void doSave(DocumentInfo info, List<Chunk> chunks,
-                        String mediaPath, long durationMs) {
+                        String sourcePath, String mediaPath, long durationMs) {
         if (info.knowledgeBaseId() != null && getKnowledgeBase(info.knowledgeBaseId()) == null) {
             throw new IllegalArgumentException("知识库不存在");
         }
         jdbc.update("""
                         INSERT INTO document(
                             id, knowledge_base_id, name, pages, chunk_count, size_bytes, created_at,
-                            media_path, duration_ms)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source_path, media_path, duration_ms)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 info.id(),
                 info.knowledgeBaseId(),
@@ -163,6 +194,7 @@ public class DocumentStore {
                 info.chunks(),
                 info.sizeBytes(),
                 info.createdAt(),
+                sourcePath,
                 mediaPath,
                 durationMs);
         jdbc.batchUpdate("""
@@ -196,6 +228,10 @@ public class DocumentStore {
         if (!withVectors.isEmpty()) {
             updateVectors(withVectors);
         }
+        if (info.knowledgeBaseId() != null) {
+            jdbc.update("UPDATE knowledge_base SET updated_at = ? WHERE id = ?",
+                    info.createdAt(), info.knowledgeBaseId());
+        }
     }
 
     public List<DocumentInfo> list() {
@@ -206,6 +242,19 @@ public class DocumentStore {
                         ORDER BY created_at DESC, name, id
                         """,
                 documentMapper());
+    }
+
+    public DocumentInfo document(String docId) {
+        return jdbc.query("""
+                        SELECT id, name, knowledge_base_id, pages, chunk_count, size_bytes, created_at,
+                               (media_path IS NOT NULL) AS has_media, duration_ms
+                        FROM document
+                        WHERE id = ?
+                        """,
+                documentMapper(), docId)
+                .stream()
+                .findFirst()
+                .orElse(null);
     }
 
     public List<Chunk> chunks(String docId) {
@@ -268,11 +317,19 @@ public class DocumentStore {
 
     @Transactional
     public void remove(String docId) {
+        String knowledgeBaseId = jdbc.query(
+                "SELECT knowledge_base_id FROM document WHERE id = ?",
+                rs -> rs.next() ? rs.getString(1) : null,
+                docId);
         jdbc.update("""
                 DELETE FROM chunk_vector
                 WHERE chunk_key IN (SELECT rowid FROM chunk WHERE document_id = ?)
                 """, docId);
         jdbc.update("DELETE FROM document WHERE id = ?", docId);
+        if (knowledgeBaseId != null) {
+            jdbc.update("UPDATE knowledge_base SET updated_at = ? WHERE id = ?",
+                    System.currentTimeMillis(), knowledgeBaseId);
+        }
     }
 
     public String mediaPath(String docId) {
@@ -286,6 +343,20 @@ public class DocumentStore {
         return jdbc.queryForList("""
                 SELECT media_path FROM document
                 WHERE knowledge_base_id = ? AND media_path IS NOT NULL
+                """, String.class, knowledgeBaseId);
+    }
+
+    public String sourcePath(String docId) {
+        return jdbc.query(
+                "SELECT source_path FROM document WHERE id = ? AND source_path IS NOT NULL",
+                rs -> rs.next() ? rs.getString(1) : null,
+                docId);
+    }
+
+    public List<String> sourcePathsForKnowledgeBase(String knowledgeBaseId) {
+        return jdbc.queryForList("""
+                SELECT source_path FROM document
+                WHERE knowledge_base_id = ? AND source_path IS NOT NULL
                 """, String.class, knowledgeBaseId);
     }
 

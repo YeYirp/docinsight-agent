@@ -36,6 +36,11 @@ class KnowledgeBaseFlowTest {
         String opsId = ops.path("id").asText();
         String accountId = account.path("id").asText();
 
+        String updatedName = "运维资料库-" + System.nanoTime();
+        JsonNode updated = updateKnowledgeBase(opsId, updatedName, "备份、恢复与账号操作");
+        assertThat(updated.path("name").asText()).isEqualTo(updatedName);
+        assertThat(updated.path("description").asText()).isEqualTo("备份、恢复与账号操作");
+
         assertThat(upload(opsId, "ops-manual.md", """
                 # 运维手册
                 ## 备份策略
@@ -71,6 +76,20 @@ class KnowledgeBaseFlowTest {
                 .timeout(Duration.ofSeconds(20))
                 .build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         assertThat(response.statusCode()).isEqualTo(201);
+        return mapper.readTree(response.body());
+    }
+
+    private JsonNode updateKnowledgeBase(String id, String name, String description)
+            throws Exception {
+        String body = mapper.writeValueAsString(new KnowledgeBaseBody(name, description));
+        HttpResponse<String> response = http.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port
+                                + "/api/knowledge-bases/" + id))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .timeout(Duration.ofSeconds(20))
+                .build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertThat(response.statusCode()).isEqualTo(200);
         return mapper.readTree(response.body());
     }
 

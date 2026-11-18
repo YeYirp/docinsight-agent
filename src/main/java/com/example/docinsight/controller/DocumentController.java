@@ -1,10 +1,13 @@
 package com.example.docinsight.controller;
 
 import com.example.docinsight.model.DocumentInfo;
+import com.example.docinsight.model.DocumentContentView;
 import com.example.docinsight.model.VideoIngestionJob;
 import com.example.docinsight.service.DocumentFormat;
 import com.example.docinsight.service.DocumentIngestionService;
+import com.example.docinsight.service.DocumentSourceStorage;
 import com.example.docinsight.service.DocumentStore;
+import com.example.docinsight.service.DocumentViewService;
 import com.example.docinsight.service.VideoIngestionJobService;
 import com.example.docinsight.service.VideoStorage;
 import org.springframework.core.io.FileSystemResource;
@@ -43,13 +46,19 @@ public class DocumentController {
     private final DocumentStore store;
     private final VideoIngestionJobService videoJobs;
     private final VideoStorage videoStorage;
+    private final DocumentSourceStorage sourceStorage;
+    private final DocumentViewService viewService;
 
     public DocumentController(DocumentIngestionService ingestion, DocumentStore store,
-                              VideoIngestionJobService videoJobs, VideoStorage videoStorage) {
+                              VideoIngestionJobService videoJobs, VideoStorage videoStorage,
+                              DocumentSourceStorage sourceStorage,
+                              DocumentViewService viewService) {
         this.ingestion = ingestion;
         this.store = store;
         this.videoJobs = videoJobs;
         this.videoStorage = videoStorage;
+        this.sourceStorage = sourceStorage;
+        this.viewService = viewService;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -89,9 +98,38 @@ public class DocumentController {
     @DeleteMapping("/{docId}")
     public Map<String, Object> delete(@PathVariable String docId) {
         String mediaPath = store.mediaPath(docId);
+        String sourcePath = store.sourcePath(docId);
         store.remove(docId);
         videoStorage.delete(mediaPath);
+        sourceStorage.delete(sourcePath);
         return Map.of("deleted", docId);
+    }
+
+    @GetMapping("/{docId}/content")
+    public DocumentContentView content(@PathVariable String docId) {
+        DocumentContentView content = viewService.view(docId);
+        if (content == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "文档不存在");
+        }
+        return content;
+    }
+
+    @GetMapping("/{docId}/source")
+    public ResponseEntity<?> source(@PathVariable String docId,
+                                    @RequestHeader(value = HttpHeaders.RANGE, required = false)
+                                    String rangeHeader) throws IOException {
+        String sourcePath = store.sourcePath(docId);
+        if (sourcePath == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "该文档没有保存原文件");
+        }
+        Path path = sourceStorage.path(sourcePath);
+        if (!Files.isRegularFile(path)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "原文件不存在");
+        }
+        return fileResponse(path, rangeHeader);
     }
 
     @GetMapping("/{docId}/media")
@@ -109,6 +147,10 @@ public class DocumentController {
                     HttpStatus.NOT_FOUND, "视频文件不存在");
         }
 
+        return fileResponse(path, rangeHeader);
+    }
+
+    private ResponseEntity<?> fileResponse(Path path, String rangeHeader) throws IOException {
         Resource resource = new FileSystemResource(path);
         long length = resource.contentLength();
         MediaType mediaType = MediaTypeFactory.getMediaType(path.getFileName().toString())

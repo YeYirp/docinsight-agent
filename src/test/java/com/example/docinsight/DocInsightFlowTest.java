@@ -3,6 +3,7 @@ package com.example.docinsight;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,6 +32,7 @@ class DocInsightFlowTest {
     private int port;
 
     private final HttpClient http = HttpClient.newHttpClient();
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
     void uploadThenAskReturnsCitations() throws Exception {
@@ -54,6 +56,26 @@ class DocInsightFlowTest {
 
         assertThat(upload.statusCode()).isEqualTo(200);
         assertThat(upload.body()).contains("chunks");
+        String docId = mapper.readTree(upload.body()).path("docId").asText();
+
+        HttpResponse<String> content = http.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port
+                                + "/api/docs/" + docId + "/content"))
+                .GET()
+                .timeout(Duration.ofSeconds(20))
+                .build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertThat(content.statusCode()).isEqualTo(200);
+        assertThat(content.body()).contains("\"mode\":\"text\"");
+        assertThat(content.body()).contains("星云设备管理平台");
+
+        HttpResponse<byte[]> source = http.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port
+                                + "/api/docs/" + docId + "/source"))
+                .GET()
+                .timeout(Duration.ofSeconds(20))
+                .build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(source.statusCode()).isEqualTo(200);
+        assertThat(source.body()).isEqualTo(fileBytes);
 
         HttpResponse<String> ask = http.send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + port + "/api/ask"))

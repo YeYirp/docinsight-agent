@@ -42,6 +42,9 @@ app:
     vec-extension: ${SQLITE_VEC_EXTENSION:}
     pool-size: ${DB_POOL_SIZE:4}
 
+  documents:
+    storage-dir: ${DOCUMENT_STORAGE_DIR:./data/documents}
+
   video:
     enabled: ${VIDEO_ENABLED:true}
     python-command: ${VIDEO_PYTHON_COMMAND:}
