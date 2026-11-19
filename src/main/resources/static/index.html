@@ -903,7 +903,7 @@
 
       <section class="chat-view" v-if="view==='chat'">
         <div class="chat-top">
-          <button class="btn scope-trigger" @click="scopeOpen=!scopeOpen">
+          <button class="btn scope-trigger" @click.stop="scopeOpen=!scopeOpen">
             <i data-lucide="layers-3"></i>
             <span class="selected-text">{{ scopeSummary }}</span>
             <span class="count">{{ selectedKbIds.length }}</span>
@@ -916,7 +916,7 @@
             <span class="scope-chip" v-if="selectedKbIds.length>3">+{{ selectedKbIds.length-3 }}</span>
           </div>
 
-          <div class="scope-menu" v-if="scopeOpen">
+          <div class="scope-menu" v-if="scopeOpen" @click.stop>
             <div class="scope-menu-head">
               <strong>选择知识库</strong>
               <div class="scope-menu-actions">
@@ -1851,10 +1851,10 @@ createApp({
       }[this.docSort] || '上传时间';
     },
     totalDocuments() {
-      return this.knowledgeBases.reduce((sum, item) => sum + item.documentCount, 0);
+      return this.knowledgeBases.reduce((sum, item) => sum + (Number(item.documentCount) || 0), 0);
     },
     totalChunks() {
-      return this.knowledgeBases.reduce((sum, item) => sum + item.chunkCount, 0);
+      return this.knowledgeBases.reduce((sum, item) => sum + (Number(item.chunkCount) || 0), 0);
     },
     selectedKnowledgeBases() {
       return this.knowledgeBases.filter(item => this.selectedKbIds.includes(item.id));
@@ -1885,6 +1885,7 @@ createApp({
     },
     closeMenus() {
       this.openMenu = '';
+      this.scopeOpen = false;
     },
     toggleMenu(name) {
       this.openMenu = this.openMenu === name ? '' : name;
@@ -2350,6 +2351,8 @@ createApp({
     },
     async uploadFiles(files) {
       if (!this.currentKb || !files.length || this.uploading) return;
+      // 逐个上传期间切换知识库，剩余文件仍应进入开始上传时的那个知识库
+      const knowledgeBaseId = this.currentKb.id;
       this.uploading = true;
       let uploaded = 0;
       let lastError = '';
@@ -2361,7 +2364,7 @@ createApp({
             ? '正在上传视频' : '正在解析文档';
           try {
             const result = await this.api(
-              '/api/knowledge-bases/' + this.currentKb.id + '/documents',
+              '/api/knowledge-bases/' + knowledgeBaseId + '/documents',
               { method: 'POST', body: form });
             if (result && result.jobId) {
               this.uploadingText = result.stage || '等待视频转写';
@@ -2383,8 +2386,18 @@ createApp({
     },
     async waitForVideoJob(jobId) {
       const deadline = Date.now() + 2 * 60 * 60 * 1000;
+      let failures = 0;
       while (Date.now() < deadline) {
-        const job = await this.api('/api/ingestion-jobs/' + jobId);
+        let job;
+        try {
+          job = await this.api('/api/ingestion-jobs/' + jobId);
+          failures = 0;
+        } catch (error) {
+          // 单次轮询失败不代表转写失败，服务端任务仍在跑，重试几次再放弃
+          if (++failures >= 3) throw error;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
         if (job.stage) this.uploadingText = job.stage;
         if (job.status === 'DONE') return job;
         if (job.status === 'FAILED') {
@@ -2440,8 +2453,10 @@ createApp({
       this.busy = true;
       this.stages = [];
       this.messages.push({ role: 'user', text });
-      const ai = { role: 'ai', text: '', cites: [], open: null };
-      this.messages.push(ai);
+      this.messages.push({ role: 'ai', text: '', cites: [], open: null });
+      // 必须取数组里的代理元素：直接改 push 之前的裸对象不会触发重新渲染，
+      // 增量文本就只能等别的状态变化才被顺带刷出来。
+      const ai = this.messages[this.messages.length - 1];
       this.scrollToBottom();
 
       try {
@@ -2453,7 +2468,16 @@ createApp({
             knowledgeBaseIds: this.selectedKbIds
           })
         });
-        if (!response.ok || !response.body) throw new Error('HTTP ' + response.status);
+        if (!response.ok || !response.body) {
+          let message = 'HTTP ' + response.status;
+          try {
+            const payload = await response.json();
+            message = payload.message || payload.detail || message;
+          } catch (ignored) {
+            // 非 JSON 错误响应，保留状态码
+          }
+          throw new Error(message);
+        }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';

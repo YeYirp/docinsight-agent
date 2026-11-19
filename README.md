@@ -63,6 +63,8 @@ flowchart LR
 - 项目自带 Maven Wrapper
 - 视频功能额外需要 Python 3.10+ 和 faster-whisper
 - 不要求单独安装 SQLite 数据库
+- 随包只提供 Windows x86_64 的 sqlite-vec 扩展；macOS / Linux 首次启动前需要设置
+  `SQLITE_VEC_EXTENSION` 指向本机的 vec0 动态库，否则数据源初始化会失败
 
 ## 快速开始
 
@@ -116,7 +118,8 @@ python -m pip install -r scripts/video-requirements.txt
 - 计算设备：`auto`
 - CPU 计算类型：`int8`
 - 模型缓存：`data/models`
-- 视频文件：`data/media`
+- 视频原件：与文档原件同目录，即 `data/sourcefiles/知识库名称/`
+  （仅旧版本遗留文件仍从 `data/media` 读取）
 - worker 空闲 10 分钟后释放模型内存
 
 国内网络可设置：
@@ -169,7 +172,7 @@ data/
 - 切片和向量写入使用批量 JDBC。
 - Embedding 默认每 32 条一批发送，缺失向量分批生成和写回。
 - FTS5 使用 contentless 索引，不重复保存切片正文和 ID。
-- PDF / DOCX / 文本直接从上传流解析，避免额外保留完整文件副本。
+- PDF / DOCX / 文本先保存原件，再从磁盘文件解析，避免把整份文件留在内存中。
 - Web 线程默认限制为 32，可通过环境变量调整。
 - Whisper worker 空闲后释放模型内存，下一次视频按需重新加载。
 - 旧数据库首次启动会自动重建一次 FTS 索引，之后不会重复重建。

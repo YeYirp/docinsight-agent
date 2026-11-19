@@ -92,64 +92,6 @@ public class DocumentStore {
         return getKnowledgeBase(id);
     }
 
-    public KnowledgeBase updateKnowledgeBase(String id, String name, String description) {
-        KnowledgeBase existing = getKnowledgeBase(id);
-        return existing == null ? null
-                : updateKnowledgeBase(id, name, description, existing.sourceDir());
-    }
-
-    @Transactional
-    public KnowledgeBase updateKnowledgeBase(String id, String name, String description,
-                                             String sourceDir) {
-        String normalizedName = name == null ? "" : name.trim();
-        if (normalizedName.isBlank()) {
-            throw new IllegalArgumentException("知识库名称不能为空");
-        }
-        KnowledgeBase existing = getKnowledgeBase(id);
-        if (existing == null) {
-            return null;
-        }
-        try {
-            jdbc.update("""
-                    UPDATE knowledge_base
-                    SET name = ?, name_key = ?, description = ?, updated_at = ?, source_dir = ?
-                    WHERE id = ?
-                    """,
-                    normalizedName,
-                    normalizedName.toLowerCase(Locale.ROOT),
-                    description == null ? "" : description.trim(),
-                    System.currentTimeMillis(),
-                    sourceDir == null ? "" : sourceDir,
-                    id);
-        } catch (DataIntegrityViolationException error) {
-            throw new IllegalArgumentException("同名知识库已存在");
-        }
-        if (existing.sourceDir() != null && !existing.sourceDir().isBlank()
-                && !existing.sourceDir().equals(sourceDir)) {
-            rebaseSourcePaths(existing.sourceDir(), sourceDir);
-        }
-        return getKnowledgeBase(id);
-    }
-
-    @Transactional
-    public void rebaseSourcePaths(String oldDirectory, String newDirectory) {
-        if (oldDirectory == null || oldDirectory.isBlank()
-                || newDirectory == null || newDirectory.isBlank()
-                || oldDirectory.equals(newDirectory)) {
-            return;
-        }
-        jdbc.update("""
-                UPDATE document
-                SET source_path = ? || substr(source_path, length(?) + 1)
-                WHERE substr(source_path, 1, length(?)) = ?
-                """, newDirectory, oldDirectory, oldDirectory, oldDirectory);
-        jdbc.update("""
-                UPDATE document
-                SET media_path = ? || substr(media_path, length(?) + 1)
-                WHERE substr(media_path, 1, length(?)) = ?
-                """, newDirectory, oldDirectory, oldDirectory, oldDirectory);
-    }
-
     public List<DocumentPaths> documentPathsForKnowledgeBase(String knowledgeBaseId) {
         return jdbc.query("""
                         SELECT id, source_path, media_path
@@ -481,6 +423,11 @@ public class DocumentStore {
                 """, String.class, knowledgeBaseId);
     }
 
+    public int documentCount() {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM document", Long.class);
+        return count == null ? 0 : count.intValue();
+    }
+
     public int totalChunks() {
         Long count = jdbc.queryForObject("SELECT COUNT(*) FROM chunk", Long.class);
         return count == null ? 0 : count.intValue();
@@ -502,19 +449,9 @@ public class DocumentStore {
         if (valid.isEmpty()) {
             return;
         }
-        jdbc.batchUpdate("DELETE FROM chunk_vector WHERE chunk_key = ?",
-                new BatchPreparedStatementSetter() {
-                    @Override
-                    public void setValues(PreparedStatement statement, int index)
-                            throws SQLException {
-                        statement.setLong(1, rowIds.get(valid.get(index).id()));
-                    }
-
-                    @Override
-                    public int getBatchSize() {
-                        return valid.size();
-                    }
-                });
+        List<Long> chunkKeys = valid.stream().map(chunk -> rowIds.get(chunk.id())).toList();
+        jdbc.update("DELETE FROM chunk_vector WHERE chunk_key IN ("
+                + placeholders(chunkKeys.size()) + ")", chunkKeys.toArray());
         jdbc.batchUpdate(
                 "INSERT INTO chunk_vector(chunk_key, embedding) VALUES (?, vec_f32(?))",
                 new BatchPreparedStatementSetter() {
@@ -536,19 +473,22 @@ public class DocumentStore {
     public List<VectorCandidate> vectorCandidates(
             double[] queryVector, Collection<String> docIds, int limit) {
         Scope scope = scope(docIds);
-        String vectorLiteral = "vec_f32('" + toVectorJson(queryVector) + "')";
+        List<Object> args = new ArrayList<>(scope.args().size() + 2);
+        args.add(toVectorBlob(queryVector));
+        args.add(Math.max(1, limit));
+        args.addAll(scope.args());
         return jdbc.query("""
                         SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
                                v.distance
                         FROM chunk_vector v
                         JOIN chunk c ON v.chunk_key = c.rowid
-                        WHERE v.embedding MATCH %s AND k = %d AND %s
+                        WHERE v.embedding MATCH vec_f32(?) AND k = ? AND %s
                         ORDER BY v.distance ASC
-                        """.formatted(vectorLiteral, Math.max(1, limit), scope.sql()),
+                        """.formatted(scope.sql()),
                 (rs, rowNum) -> new VectorCandidate(
                         chunkMapper().mapRow(rs, rowNum),
                         rs.getDouble("distance")),
-                scope.args().toArray());
+                args.toArray());
     }
 
     public List<KeywordCandidate> keywordCandidates(
@@ -779,21 +719,5 @@ public class DocumentStore {
             buffer.putFloat((float) value);
         }
         return buffer.array();
-    }
-
-    private String toVectorJson(double[] vector) {
-        StringBuilder json = new StringBuilder(vector.length * 12);
-        json.append('[');
-        for (int index = 0; index < vector.length; index++) {
-            double value = vector[index];
-            if (!Double.isFinite(value)) {
-                throw new IllegalArgumentException("向量包含非有限数值");
-            }
-            if (index > 0) {
-                json.append(',');
-            }
-            json.append(Double.toString(value));
-        }
-        return json.append(']').toString();
     }
 }

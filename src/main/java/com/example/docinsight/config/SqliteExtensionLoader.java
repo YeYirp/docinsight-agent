@@ -16,8 +16,6 @@ import java.util.Locale;
 /** 解析、释放并加载随应用打包的 sqlite-vec 扩展。 */
 public final class SqliteExtensionLoader {
 
-    private static final String VERSION = "0.1.9";
-
     private SqliteExtensionLoader() {
     }
 
@@ -67,9 +65,5 @@ public final class SqliteExtensionLoader {
             }
             return version;
         }
-    }
-
-    public static String bundledVersion() {
-        return VERSION;
     }
 }

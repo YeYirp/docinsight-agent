@@ -48,7 +48,7 @@ public class ChatController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", "UP");
         body.put("database", databaseStatus());
-        body.put("documents", store.list().size());
+        body.put("documents", store.documentCount());
         body.put("chunks", store.totalChunks());
         return body;
     }

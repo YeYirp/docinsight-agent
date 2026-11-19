@@ -135,9 +135,11 @@ public class AgentService {
             send(emitter, "sources", sources);
 
             stage(emitter, "生成回答", "依据资料组织答案");
-            String answer = llmReady()
-                    ? llmAnswer(input.question(), hits, emitter)
-                    : extractiveAnswer(hits, emitter);
+            if (llmReady()) {
+                llmAnswer(input.question(), hits, emitter);
+            } else {
+                extractiveAnswer(hits, emitter);
+            }
 
             metrics.latency(System.currentTimeMillis() - started);
             send(emitter, "done", Map.of(
@@ -168,7 +170,7 @@ public class AgentService {
         return null;
     }
 
-    private String llmAnswer(String question, List<RetrievalService.Hit> hits, SseEmitter emitter)
+    private void llmAnswer(String question, List<RetrievalService.Hit> hits, SseEmitter emitter)
             throws Exception {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         StreamingChatModel streaming = streamingProvider.getIfAvailable();
@@ -180,12 +182,10 @@ public class AgentService {
         messages = toolLoop(chatModel, messages, emitter);
 
         CompletableFuture<ChatResponse> future = new CompletableFuture<>();
-        StringBuilder answer = new StringBuilder();
         streaming.chat(ChatRequest.builder().messages(messages).build(),
                 new StreamingChatResponseHandler() {
                     @Override
                     public void onPartialResponse(String partial) {
-                        answer.append(partial);
                         send(emitter, "delta", Map.of("text", partial));
                     }
 
@@ -204,7 +204,6 @@ public class AgentService {
         if (response.tokenUsage() != null) {
             metrics.tokens(response.tokenUsage().inputTokenCount(), response.tokenUsage().outputTokenCount());
         }
-        return answer.toString();
     }
 
     /** 工具最多调 maxToolRounds 轮；到上限就禁用工具，强制基于已有资料总结。 */
@@ -227,7 +226,9 @@ public class AgentService {
             messages.add(aiMessage);
             for (ToolExecutionRequest request : aiMessage.toolExecutionRequests()) {
                 if (!Tools.SEARCH.equals(request.name())) {
-                    throw new IllegalStateException("模型请求了未授权工具: " + request.name());
+                    // 模型可能幻觉出未注册的工具名；不给结果这一轮就无法收敛，也不能真的去执行。
+                    messages.add(ToolExecutionResultMessage.from(request, "该工具不可用，请依据已有资料回答。"));
+                    continue;
                 }
                 stage(emitter, "调用工具", request.name());
                 metrics.toolCall();
@@ -240,11 +241,11 @@ public class AgentService {
     }
 
     /** 没有配置模型时，用检索结果拼一个抽取式回答，保证链路可演示。 */
-    private String extractiveAnswer(List<RetrievalService.Hit> hits, SseEmitter emitter) throws InterruptedException {
+    private void extractiveAnswer(List<RetrievalService.Hit> hits, SseEmitter emitter)
+            throws InterruptedException {
         if (hits.isEmpty()) {
-            String text = "没有检索到相关内容。请确认文档是否包含该主题，或换一种说法再问。";
-            stream(emitter, text);
-            return text;
+            stream(emitter, "没有检索到相关内容。请确认文档是否包含该主题，或换一种说法再问。");
+            return;
         }
         StringBuilder sb = new StringBuilder("根据文档，可以这样理解：\n\n");
         int index = 1;
@@ -260,9 +261,7 @@ public class AgentService {
                     .append("（").append(chunk.location()).append("）\n");
         }
         sb.append("\n（当前未配置模型 key，以上为原文摘录。）");
-        String text = sb.toString();
-        stream(emitter, text);
-        return text;
+        stream(emitter, sb.toString());
     }
 
     private void stream(SseEmitter emitter, String text) throws InterruptedException {

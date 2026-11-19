@@ -67,7 +67,6 @@ public class Chunker {
         String heading = String.join(" > ", headingPath);
         String location = formatLocation(start, end);
 
-        int index = 0;
         int offset = 0;
         while (offset < text.length()) {
             int to = Math.min(text.length(), offset + maxSize);
@@ -75,7 +74,6 @@ public class Chunker {
             if (!slice.isEmpty()) {
                 out.add(new Chunk(docId + "#" + out.size(), docId, docName, heading, slice, location, null));
             }
-            index++;
             if (to >= text.length()) {
                 break;
             }

@@ -14,7 +14,4 @@ public record AskInput(
         @Size(max = 20, message = "一次最多选择 20 个知识库")
         List<String> knowledgeBaseIds
 ) {
-    public AskInput(String question, String docId, String sessionId) {
-        this(question, docId, sessionId, List.of());
-    }
 }

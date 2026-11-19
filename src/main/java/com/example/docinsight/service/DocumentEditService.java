@@ -67,7 +67,6 @@ public class DocumentEditService {
             }
             store.replaceContent(docId, chunks,
                     Files.size(path), parsed.pages());
-            return viewService.view(docId);
         } catch (IOException | RuntimeException error) {
             try {
                 Files.writeString(path, previous, StandardCharsets.UTF_8);
@@ -78,5 +77,7 @@ public class DocumentEditService {
         } finally {
             Files.deleteIfExists(temporary);
         }
+        // 索引已经提交，此时再取视图失败不应该把文件回滚成旧内容。
+        return viewService.view(docId);
     }
 }
