@@ -20,6 +20,7 @@
     <properties>
         <java.version>21</java.version>
         <langchain4j.version>1.16.3</langchain4j.version>
+        <mybatis-spring-boot.version>4.1.0</mybatis-spring-boot.version>
         <pdfbox.version>2.0.31</pdfbox.version>
         <poi.version>5.2.5</poi.version>
         <spring-jdbc.version>7.0.9</spring-jdbc.version>
@@ -48,6 +49,12 @@
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
+        </dependency>
+        <!-- 检索侧的动态 SQL 交给 MyBatis 的 XML <foreach>/<choose> -->
+        <dependency>
+            <groupId>org.mybatis.spring.boot</groupId>
+            <artifactId>mybatis-spring-boot-starter</artifactId>
+            <version>${mybatis-spring-boot.version}</version>
         </dependency>
         <dependency>
             <groupId>org.xerial</groupId>

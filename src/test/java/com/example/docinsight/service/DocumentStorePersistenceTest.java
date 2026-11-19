@@ -3,10 +3,14 @@ package com.example.docinsight.service;
 import com.example.docinsight.config.SqliteDataSource;
 import com.example.docinsight.config.SqliteExtensionLoader;
 import com.example.docinsight.config.SqliteSchema;
+import com.example.docinsight.mapper.DocumentQueryMapper;
 import com.example.docinsight.model.Chunk;
 import com.example.docinsight.model.DocumentInfo;
 import com.example.docinsight.model.KnowledgeBase;
 import org.junit.jupiter.api.Test;
+import org.mybatis.spring.SqlSessionFactoryBean;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
@@ -30,7 +34,7 @@ class DocumentStorePersistenceTest {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         initializeSchema(dataSource, jdbc);
 
-        DocumentStore first = new DocumentStore(jdbc);
+        DocumentStore first = new DocumentStore(jdbc, queryMapper(dataSource));
         KnowledgeBase knowledgeBase = first.createKnowledgeBase("运维手册", "SQLite 持久化验证");
         first.save(
                 new DocumentInfo("d1", "manual.md", knowledgeBase.id(), 1, 2, 128),
@@ -43,7 +47,7 @@ class DocumentStorePersistenceTest {
                 new Chunk("d1#0", "d1", "manual.md", "备份策略",
                         "每日执行全量备份", "第 1 行", new double[]{0.1, 0.2, 0.3})));
 
-        DocumentStore reopened = new DocumentStore(new JdbcTemplate(dataSource));
+        DocumentStore reopened = new DocumentStore(new JdbcTemplate(dataSource), queryMapper(dataSource));
 
         KnowledgeBase restored = reopened.getKnowledgeBase(knowledgeBase.id());
         assertThat(restored).isNotNull();
@@ -115,7 +119,7 @@ class DocumentStorePersistenceTest {
         assertThat(jdbc.queryForList(
                 "SELECT name FROM pragma_table_info('document')", String.class))
                 .contains("media_path", "duration_ms");
-        List<DocumentInfo> legacyDocuments = new DocumentStore(jdbc).list();
+        List<DocumentInfo> legacyDocuments = new DocumentStore(jdbc, queryMapper(dataSource)).list();
         assertThat(legacyDocuments).hasSize(1);
         assertThat(legacyDocuments.get(0).createdAt()).isPositive();
     }
@@ -131,7 +135,7 @@ class DocumentStorePersistenceTest {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         initializeSchema(dataSource, jdbc);
 
-        DocumentStore store = new DocumentStore(jdbc);
+        DocumentStore store = new DocumentStore(jdbc, queryMapper(dataSource));
         KnowledgeBase knowledgeBase = store.createKnowledgeBase("视频库", "");
         DocumentInfo info = new DocumentInfo(
                 "video1", "demo.mp4", knowledgeBase.id(), 1, 1, 2048,
@@ -141,13 +145,13 @@ class DocumentStorePersistenceTest {
                         "视频语音转写", "视频第一段内容", "00:05", null)),
                 "video1.mp4", 65_000);
 
-        DocumentInfo restored = new DocumentStore(new JdbcTemplate(dataSource))
+        DocumentInfo restored = new DocumentStore(new JdbcTemplate(dataSource), queryMapper(dataSource))
                 .documentsForKnowledgeBase(knowledgeBase.id())
                 .get(0);
 
         assertThat(restored.media()).isTrue();
         assertThat(restored.durationMs()).isEqualTo(65_000);
-        assertThat(new DocumentStore(new JdbcTemplate(dataSource)).mediaPath("video1"))
+        assertThat(new DocumentStore(new JdbcTemplate(dataSource), queryMapper(dataSource)).mediaPath("video1"))
                 .isEqualTo("video1.mp4");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM document WHERE media_path = 'video1.mp4'", Long.class))
@@ -207,10 +211,49 @@ class DocumentStorePersistenceTest {
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM chunk_fts WHERE chunk_fts MATCH '备份'", Long.class))
                 .isEqualTo(1);
-        assertThat(new DocumentStore(jdbc).keywordCandidates(
+        assertThat(new DocumentStore(jdbc, queryMapper(dataSource)).keywordCandidates(
                 Set.of("备份"), Set.of("doc-fts"), 10))
                 .extracting(candidate -> candidate.chunk().id())
                 .contains("doc-fts#0");
+    }
+
+    @Test
+    void fallsBackToLikeSearchWhenFtsTokenizesDifferently() throws Exception {
+        Path dataDirectory = Path.of(
+                "target", "test-data", "like-fallback-" + UUID.randomUUID());
+        Path extension = SqliteExtensionLoader.resolve(dataDirectory, "");
+        String file = dataDirectory.resolve("docinsight.db").toAbsolutePath()
+                .toString().replace('\\', '/');
+        DataSource dataSource = new SqliteDataSource("jdbc:sqlite:" + file, extension);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        initializeSchema(dataSource, jdbc);
+
+        DocumentStore store = new DocumentStore(jdbc, queryMapper(dataSource));
+        KnowledgeBase knowledgeBase = store.createKnowledgeBase("监控对接", "");
+        store.save(
+                new DocumentInfo("dv", "monitor.md", knowledgeBase.id(), 1, 1, 64),
+                List.of(new Chunk("dv#0", "dv", "monitor.md", "组件对接",
+                        "使用 prometheusgrafana 作为聚合导出端", "第 1 行", null)));
+
+        // FTS 把整串字母当作一个词，检索 grafana 只能靠 LIKE 兜底命中。
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM chunk_fts WHERE chunk_fts MATCH '\"grafana\"'", Long.class))
+                .isZero();
+        assertThat(store.keywordCandidates(Set.of("grafana"), Set.of("dv"), 10))
+                .singleElement()
+                .satisfies(candidate -> {
+                    assertThat(candidate.chunk().id()).isEqualTo("dv#0");
+                    assertThat(candidate.keywordScore()).isPositive();
+                });
+    }
+
+    private DocumentQueryMapper queryMapper(DataSource dataSource) throws Exception {
+        SqlSessionFactoryBean factory = new SqlSessionFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setMapperLocations(new ClassPathResource(
+                "com/example/docinsight/mapper/DocumentQueryMapper.xml"));
+        return new SqlSessionTemplate(factory.getObject())
+                .getMapper(DocumentQueryMapper.class);
     }
 
     private void initializeSchema(DataSource dataSource, JdbcTemplate jdbc) {

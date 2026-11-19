@@ -1,5 +1,7 @@
 package com.example.docinsight.service;
 
+import com.example.docinsight.mapper.ChunkRow;
+import com.example.docinsight.mapper.DocumentQueryMapper;
 import com.example.docinsight.model.Chunk;
 import com.example.docinsight.model.DocumentInfo;
 import com.example.docinsight.model.KnowledgeBase;
@@ -14,7 +16,6 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,9 +41,6 @@ public class DocumentStore {
     public record DocumentPaths(String docId, String sourcePath, String mediaPath) {
     }
 
-    private record Scope(String sql, List<Object> args) {
-    }
-
     private static final Pattern HAN_RUN = Pattern.compile("\\p{IsHan}+");
     private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}_-]{2,}");
 
@@ -57,9 +55,11 @@ public class DocumentStore {
             """;
 
     private final JdbcTemplate jdbc;
+    private final DocumentQueryMapper queries;
 
-    public DocumentStore(JdbcTemplate jdbc) {
+    public DocumentStore(JdbcTemplate jdbc, DocumentQueryMapper queries) {
         this.jdbc = jdbc;
+        this.queries = queries;
     }
 
     public KnowledgeBase createKnowledgeBase(String name, String description) {
@@ -185,12 +185,8 @@ public class DocumentStore {
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty()) {
             return Set.of();
         }
-        List<String> ids = List.copyOf(knowledgeBaseIds);
-        String placeholders = placeholders(ids.size());
-        return new LinkedHashSet<>(jdbc.query(
-                "SELECT id FROM document WHERE knowledge_base_id IN (" + placeholders + ")",
-                (rs, rowNum) -> rs.getString("id"),
-                ids.toArray()));
+        return new LinkedHashSet<>(
+                queries.documentIdsForKnowledgeBases(List.copyOf(knowledgeBaseIds)));
     }
 
     @Transactional
@@ -338,15 +334,7 @@ public class DocumentStore {
     }
 
     public List<Chunk> chunksForDocuments(Collection<String> docIds) {
-        Scope scope = scope(docIds);
-        return jdbc.query("""
-                        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location
-                        FROM chunk c
-                        WHERE %s
-                        ORDER BY c.document_id, c.chunk_order
-                        """.formatted(scope.sql()),
-                chunkMapper(),
-                scope.args().toArray());
+        return toChunks(queries.chunksForDocuments(scopeIds(docIds)));
     }
 
     public List<Chunk> chunksWithoutVectors(Collection<String> docIds) {
@@ -354,28 +342,12 @@ public class DocumentStore {
     }
 
     public List<Chunk> chunksWithoutVectors(Collection<String> docIds, int limit) {
-        Scope scope = scope(docIds);
-        String sql = """
-                        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location
-                        FROM chunk c
-                        LEFT JOIN chunk_vector v ON v.chunk_key = c.rowid
-                        WHERE v.chunk_key IS NULL AND %s
-                        ORDER BY c.document_id, c.chunk_order
-                        """.formatted(scope.sql());
-        if (limit > 0) {
-            sql += " LIMIT ?";
-            List<Object> args = new ArrayList<>(scope.args());
-            args.add(limit);
-            return jdbc.query(sql, chunkMapper(), args.toArray());
-        }
-        return jdbc.query(sql, chunkMapper(), scope.args().toArray());
+        return toChunks(queries.chunksWithoutVectors(
+                scopeIds(docIds), limit > 0 ? limit : null));
     }
 
     public boolean hasChunks(Collection<String> docIds) {
-        Scope scope = scope(docIds);
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM chunk c WHERE " + scope.sql(),
-                Long.class, scope.args().toArray());
-        return count != null && count > 0;
+        return queries.countChunks(scopeIds(docIds)) > 0;
     }
 
     @Transactional
@@ -472,23 +444,11 @@ public class DocumentStore {
 
     public List<VectorCandidate> vectorCandidates(
             double[] queryVector, Collection<String> docIds, int limit) {
-        Scope scope = scope(docIds);
-        List<Object> args = new ArrayList<>(scope.args().size() + 2);
-        args.add(toVectorBlob(queryVector));
-        args.add(Math.max(1, limit));
-        args.addAll(scope.args());
-        return jdbc.query("""
-                        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
-                               v.distance
-                        FROM chunk_vector v
-                        JOIN chunk c ON v.chunk_key = c.rowid
-                        WHERE v.embedding MATCH vec_f32(?) AND k = ? AND %s
-                        ORDER BY v.distance ASC
-                        """.formatted(scope.sql()),
-                (rs, rowNum) -> new VectorCandidate(
-                        chunkMapper().mapRow(rs, rowNum),
-                        rs.getDouble("distance")),
-                args.toArray());
+        return queries.vectorCandidates(
+                        toVectorBlob(queryVector), Math.max(1, limit), scopeIds(docIds))
+                .stream()
+                .map(row -> new VectorCandidate(toChunk(row), row.getDistance()))
+                .toList();
     }
 
     public List<KeywordCandidate> keywordCandidates(
@@ -497,99 +457,39 @@ public class DocumentStore {
         if (terms.isEmpty()) {
             return List.of();
         }
-        Scope scope = scope(docIds);
         String ftsQuery = terms.stream()
                 .map(term -> "\"" + term.replace("\"", "\"\"") + "\"")
                 .reduce((left, right) -> left + " OR " + right)
                 .orElse("");
-        String keywordExpression = keywordExpression(terms);
-        String headingExpression = headingExpression(terms);
-
-        List<Object> args = new ArrayList<>();
-        args.addAll(textExpressionArgs(terms));
-        args.addAll(singleExpressionArgs(terms));
-        args.add(ftsQuery);
-        args.addAll(scope.args());
-        args.add(Math.max(1, limit));
-
-        List<KeywordCandidate> candidates = jdbc.query("""
-                        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
-                               %s AS keyword_score,
-                               %s AS heading_score
-                        FROM chunk c
-                        JOIN chunk_fts ON chunk_fts.rowid = c.rowid
-                        WHERE chunk_fts MATCH ? AND %s
-                        ORDER BY keyword_score DESC, heading_score DESC
-                        LIMIT ?
-                        """.formatted(keywordExpression, headingExpression, scope.sql()),
-                keywordCandidateMapper(),
-                args.toArray());
+        int topK = Math.max(1, limit);
+        List<String> scope = scopeIds(docIds);
+        List<KeywordCandidate> candidates = toKeywordCandidates(queries.ftsCandidates(
+                terms, ftsQuery, terms.size() * 2.0, terms.size(), scope, topK));
+        // FTS 的分词召回不到内容时退回 LIKE，长句提问才不会空手而归。
         return candidates.isEmpty()
-                ? fallbackKeywordCandidates(terms, scope, limit, keywordExpression, headingExpression)
+                ? toKeywordCandidates(queries.likeCandidates(
+                        terms, terms.size() * 2.0, terms.size(), scope, topK))
                 : candidates;
     }
 
-    private List<KeywordCandidate> fallbackKeywordCandidates(
-            List<String> terms, Scope scope, int limit,
-            String keywordExpression, String headingExpression) {
-        String likeClause = String.join(" OR ",
-                Collections.nCopies(terms.size(),
-                        "(LOWER(c.text) LIKE '%' || LOWER(?) || '%' "
-                                + "OR LOWER(c.heading) LIKE '%' || LOWER(?) || '%')"));
-        List<Object> args = new ArrayList<>();
-        args.addAll(textExpressionArgs(terms));
-        args.addAll(singleExpressionArgs(terms));
-        for (String term : terms) {
-            args.add(term);
-            args.add(term);
-        }
-        args.addAll(scope.args());
-        args.add(Math.max(1, limit));
-        return jdbc.query("""
-                        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
-                               %s AS keyword_score,
-                               %s AS heading_score
-                        FROM chunk c
-                        WHERE (%s) AND %s
-                        ORDER BY keyword_score DESC, heading_score DESC
-                        LIMIT ?
-                        """.formatted(
-                        keywordExpression, headingExpression, likeClause, scope.sql()),
-                keywordCandidateMapper(),
-                args.toArray());
+    private static List<String> scopeIds(Collection<String> docIds) {
+        return docIds == null ? null : List.copyOf(docIds);
     }
 
-    private String keywordExpression(List<String> terms) {
-        String sum = terms.stream()
-                .map(term -> """
-                        MIN(2.0, (
-                            LENGTH(LOWER(c.text)) - LENGTH(REPLACE(LOWER(c.text), LOWER(?), ''))
-                        ) * 1.0 / MAX(LENGTH(?), 1))""")
-                .reduce((left, right) -> left + " + " + right)
-                .orElse("0");
-        return "MIN(1.0, (" + sum + ") / " + (terms.size() * 2.0) + ")";
+    private static List<Chunk> toChunks(List<ChunkRow> rows) {
+        return rows.stream().map(DocumentStore::toChunk).toList();
     }
 
-    private String headingExpression(List<String> terms) {
-        String sum = terms.stream()
-                .map(term -> "CASE WHEN INSTR(LOWER(COALESCE(c.heading, '')), LOWER(?)) > 0 "
-                        + "THEN 1 ELSE 0 END")
-                .reduce((left, right) -> left + " + " + right)
-                .orElse("0");
-        return "MIN(1.0, (" + sum + ") * 1.0 / " + terms.size() + ")";
+    private static Chunk toChunk(ChunkRow row) {
+        return new Chunk(row.getId(), row.getDocumentId(), row.getDocName(),
+                row.getHeading(), row.getText(), row.getLocation(), null);
     }
 
-    private List<Object> textExpressionArgs(List<String> terms) {
-        List<Object> args = new ArrayList<>(terms.size() * 2);
-        for (String term : terms) {
-            args.add(term);
-            args.add(term);
-        }
-        return args;
-    }
-
-    private List<Object> singleExpressionArgs(List<String> terms) {
-        return new ArrayList<>(terms);
+    private static List<KeywordCandidate> toKeywordCandidates(List<ChunkRow> rows) {
+        return rows.stream()
+                .map(row -> new KeywordCandidate(
+                        toChunk(row), row.getKeywordScore(), row.getHeadingScore()))
+                .toList();
     }
 
     private List<String> normalizeKeywords(Set<String> keywords) {
@@ -652,25 +552,6 @@ public class DocumentStore {
                 rs.getString("text"),
                 rs.getString("location"),
                 null);
-    }
-
-    private RowMapper<KeywordCandidate> keywordCandidateMapper() {
-        return (rs, rowNum) -> new KeywordCandidate(
-                chunkMapper().mapRow(rs, rowNum),
-                rs.getDouble("keyword_score"),
-                rs.getDouble("heading_score"));
-    }
-
-    private Scope scope(Collection<String> docIds) {
-        if (docIds == null) {
-            return new Scope("1 = 1", List.of());
-        }
-        if (docIds.isEmpty()) {
-            return new Scope("1 = 0", List.of());
-        }
-        List<String> ids = List.copyOf(docIds);
-        return new Scope("c.document_id IN (" + placeholders(ids.size()) + ")",
-                new ArrayList<>(ids));
     }
 
     private String placeholders(int count) {

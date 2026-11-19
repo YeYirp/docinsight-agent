@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.docinsight.mapper.DocumentQueryMapper">
+
+    <resultMap id="chunkRow" type="com.example.docinsight.mapper.ChunkRow">
+        <id property="id" column="id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="docName" column="doc_name"/>
+        <result property="heading" column="heading"/>
+        <result property="text" column="text"/>
+        <result property="location" column="location"/>
+        <result property="distance" column="distance"/>
+        <result property="keywordScore" column="keyword_score"/>
+        <result property="headingScore" column="heading_score"/>
+    </resultMap>
+
+    <!-- docIds 为 null 表示不限范围，空集合表示什么都不该命中。 -->
+    <sql id="documentScope">
+        <choose>
+            <when test="docIds == null">1 = 1</when>
+            <when test="docIds.size() == 0">1 = 0</when>
+            <otherwise>
+                c.document_id IN
+                <foreach collection="docIds" item="docId" open="(" separator="," close=")">
+                    #{docId}
+                </foreach>
+            </otherwise>
+        </choose>
+    </sql>
+
+    <sql id="keywordScoreExpression">
+        MIN(1.0, (
+        <foreach collection="terms" item="term" separator=" + ">
+            MIN(2.0, (
+                LENGTH(LOWER(c.text)) - LENGTH(REPLACE(LOWER(c.text), LOWER(#{term}), ''))
+            ) * 1.0 / MAX(LENGTH(#{term}), 1))
+        </foreach>
+        ) / #{keywordDivisor})
+    </sql>
+
+    <sql id="headingScoreExpression">
+        MIN(1.0, (
+        <foreach collection="terms" item="term" separator=" + ">
+            CASE WHEN INSTR(LOWER(COALESCE(c.heading, '')), LOWER(#{term})) &gt; 0
+                 THEN 1 ELSE 0 END
+        </foreach>
+        ) * 1.0 / #{headingDivisor})
+    </sql>
+
+    <select id="documentIdsForKnowledgeBases" resultType="string">
+        SELECT id
+        FROM document
+        WHERE knowledge_base_id IN
+        <foreach collection="kbIds" item="kbId" open="(" separator="," close=")">
+            #{kbId}
+        </foreach>
+    </select>
+
+    <select id="chunksForDocuments" resultMap="chunkRow">
+        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location
+        FROM chunk c
+        WHERE <include refid="documentScope"/>
+        ORDER BY c.document_id, c.chunk_order
+    </select>
+
+    <select id="chunksWithoutVectors" resultMap="chunkRow">
+        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location
+        FROM chunk c
+        LEFT JOIN chunk_vector v ON v.chunk_key = c.rowid
+        WHERE v.chunk_key IS NULL AND <include refid="documentScope"/>
+        ORDER BY c.document_id, c.chunk_order
+        <if test="limit != null">LIMIT #{limit}</if>
+    </select>
+
+    <select id="countChunks" resultType="long">
+        SELECT COUNT(*)
+        FROM chunk c
+        WHERE <include refid="documentScope"/>
+    </select>
+
+    <select id="vectorCandidates" resultMap="chunkRow">
+        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
+               v.distance
+        FROM chunk_vector v
+        JOIN chunk c ON v.chunk_key = c.rowid
+        WHERE v.embedding MATCH vec_f32(#{queryVector})
+          AND k = #{k}
+          AND <include refid="documentScope"/>
+        ORDER BY v.distance ASC
+    </select>
+
+    <select id="ftsCandidates" resultMap="chunkRow">
+        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
+               <include refid="keywordScoreExpression"/> AS keyword_score,
+               <include refid="headingScoreExpression"/> AS heading_score
+        FROM chunk c
+        JOIN chunk_fts ON chunk_fts.rowid = c.rowid
+        WHERE chunk_fts MATCH #{ftsQuery}
+          AND <include refid="documentScope"/>
+        ORDER BY keyword_score DESC, heading_score DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- FTS 分词召回不到内容时，退回逐词 LIKE，保证长句提问也能命中原文。 -->
+    <select id="likeCandidates" resultMap="chunkRow">
+        SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
+               <include refid="keywordScoreExpression"/> AS keyword_score,
+               <include refid="headingScoreExpression"/> AS heading_score
+        FROM chunk c
+        WHERE (
+        <foreach collection="terms" item="term" separator=" OR ">
+            (LOWER(c.text) LIKE '%' || LOWER(#{term}) || '%'
+             OR LOWER(c.heading) LIKE '%' || LOWER(#{term}) || '%')
+        </foreach>
+        )
+          AND <include refid="documentScope"/>
+        ORDER BY keyword_score DESC, heading_score DESC
+        LIMIT #{limit}
+    </select>
+</mapper>
