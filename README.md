@@ -86,8 +86,9 @@ Linux / macOS：
 http://127.0.0.1:8080
 ```
 
-不要直接双击 `src/main/resources/static/index.html`。该页面依赖 Spring Boot 提供接口和
-静态资源，直接以 `file://` 打开时页面会提示先启动应用。
+直接双击 `src/main/resources/static/index.html` 也能打开，页面会进入离线预览模式：只保留对话页，
+不发起任何后端请求，因此不能提问，也不显示知识库。离线预览依赖同目录下的 `vendor/` 和 `js/`，
+不要单独复制 HTML 文件。需要真实问答请启动应用后访问 `http://127.0.0.1:8080`。
 
 使用步骤：
 

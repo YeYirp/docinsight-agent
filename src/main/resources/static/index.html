@@ -828,22 +828,6 @@
 </style>
 </head>
 <body>
-<script>
-  if (window.location.protocol === 'file:') {
-    document.addEventListener('DOMContentLoaded', function () {
-      document.body.innerHTML = `
-        <main style="min-height:100vh;display:grid;place-items:center;background:#f4f5f3;color:#17201d;font:15px/1.7 'Microsoft YaHei',sans-serif;padding:24px">
-          <section style="width:min(560px,100%);background:#fff;border:1px solid #e4e7e3;border-radius:10px;padding:36px;box-shadow:0 18px 55px rgba(23,32,29,.1);text-align:center">
-            <div style="font-size:40px;margin-bottom:14px">📄</div>
-            <h1 style="font-size:22px;margin:0 0 10px">请通过应用地址打开</h1>
-            <p style="margin:0 0 18px;color:#707a75">这个页面需要 Spring Boot 服务提供接口和静态资源，直接双击 HTML 文件无法使用。</p>
-            <p style="margin:0 0 18px">先启动 <strong>DocInsightApplication</strong>，然后访问：</p>
-            <a href="http://127.0.0.1:8080" style="display:inline-block;background:#1e8a5b;color:#fff;text-decoration:none;border-radius:8px;padding:10px 18px;font-weight:600">http://127.0.0.1:8080</a>
-          </section>
-        </main>`;
-    });
-  }
-</script>
 <div id="app" class="app-shell" v-cloak>
   <aside class="sidebar">
     <div class="brand">
@@ -861,14 +845,14 @@
         <i data-lucide="message-square-text"></i>
         <span>新对话</span>
       </button>
-      <button class="nav-item" :class="{active:view==='library'}" @click="showLibrary">
+      <button class="nav-item" v-if="!offline" :class="{active:view==='library'}" @click="showLibrary">
         <i data-lucide="library"></i>
         <span>知识库</span>
       </button>
     </nav>
 
     <div class="sidebar-rule"></div>
-    <div class="sidebar-summary">
+    <div class="sidebar-summary" v-if="!offline">
       <strong>{{ knowledgeBases.length }} 个知识库</strong>
       {{ totalDocuments }} 篇文档 · {{ totalChunks }} 个索引块
     </div>
@@ -886,7 +870,7 @@
         <h1>{{ view==='chat' ? '新对话' : pageTitle }}</h1>
       </div>
       <div class="head-actions">
-        <span class="workspace-meta" v-if="view==='chat'">{{ selectedKbIds.length }} 个知识库参与回答</span>
+        <span class="workspace-meta" v-if="view==='chat' && !offline">{{ selectedKbIds.length }} 个知识库参与回答</span>
         <button v-if="view==='chat' && messages.length" class="btn small ghost" @click="clearChat">
           <i data-lucide="square-pen"></i>
           清空对话
@@ -902,7 +886,7 @@
       <div class="loading-line" v-if="loading"></div>
 
       <section class="chat-view" v-if="view==='chat'">
-        <div class="chat-top">
+        <div class="chat-top" v-if="!offline">
           <button class="btn scope-trigger" @click.stop="scopeOpen=!scopeOpen">
             <i data-lucide="layers-3"></i>
             <span class="selected-text">{{ scopeSummary }}</span>
@@ -971,7 +955,8 @@
             <div class="chat-empty-symbol"><i data-lucide="sparkles"></i></div>
             <h2>有什么可以帮你？</h2>
             <p v-if="knowledgeBases.length">已选择 {{ selectedKbIds.length }} 个知识库作为回答范围，可随时切换或复选多个知识库。</p>
-            <p v-else>先创建一个知识库并添加文档，然后就可以基于文档内容提问并查看引用来源。</p>
+            <p v-else-if="!offline">先创建一个知识库并添加文档，然后就可以基于文档内容提问并查看引用来源。</p>
+            <p v-else>当前是离线预览：未连接后端服务，因此只展示对话页面。启动 DocInsightApplication 后访问 http://127.0.0.1:8080 即可提问。</p>
             <div class="suggestions" v-if="knowledgeBases.length">
               <button class="suggestion" @click="useSuggestion('备份多久做一次？')">
                 <i data-lucide="clock-3"></i>
@@ -986,7 +971,7 @@
                 总结核心内容
               </button>
             </div>
-            <button v-else class="btn primary" style="margin-top:20px" @click="openCreateFromChat">
+            <button v-else-if="!offline" class="btn primary" style="margin-top:20px" @click="openCreateFromChat">
               <i data-lucide="plus"></i>
               创建知识库
             </button>
@@ -994,7 +979,7 @@
         </div>
 
         <div class="chat-toolbar">
-          <span>当前回答支持引用溯源与多知识库混合检索</span>
+          <span>{{ offline ? '离线预览模式：未连接后端服务，提问与知识库功能不可用' : '当前回答支持引用溯源与多知识库混合检索' }}</span>
         </div>
 
         <div class="composer-wrap">
@@ -1003,19 +988,19 @@
               ref="questionInput"
               rows="1"
               v-model="question"
-              :disabled="busy"
-              placeholder="输入问题，Enter 发送，Shift + Enter 换行"
+              :disabled="busy || offline"
+              :placeholder="offline ? '离线预览模式，启动后端服务后即可提问' : '输入问题，Enter 发送，Shift + Enter 换行'"
               @keydown.enter.exact.prevent="ask"></textarea>
             <button
               class="send-button"
-              :disabled="busy || !question.trim() || selectedKbIds.length===0"
-              :title="selectedKbIds.length===0 ? '请先选择知识库' : '发送'"
+              :disabled="busy || offline || !question.trim() || selectedKbIds.length===0"
+              :title="offline ? '离线预览模式' : (selectedKbIds.length===0 ? '请先选择知识库' : '发送')"
               aria-label="发送问题"
               @click="ask">
               <i :data-lucide="busy ? 'loader-circle' : 'arrow-up'"></i>
             </button>
           </div>
-          <div class="composer-hint" v-if="selectedKbIds.length===0">请至少选择一个知识库</div>
+          <div class="composer-hint" v-if="!offline && selectedKbIds.length===0">请至少选择一个知识库</div>
         </div>
       </section>
 
@@ -1736,12 +1721,12 @@
   </div>
 </div>
 
-<script src="/vendor/vue.global.prod.js"></script>
-<script src="/vendor/lucide.min.js"></script>
-<script src="/js/api-client.js"></script>
-<script src="/js/doc-utils.js"></script>
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/lucide.min.js"></script>
+<script src="js/api-client.js"></script>
+<script src="js/doc-utils.js"></script>
 <script>
-if (window.location.protocol !== 'file:') {
+if (window.Vue) {
 const { createApp } = Vue;
 
 createApp({
@@ -1811,7 +1796,8 @@ createApp({
       toast: { message: '', type: 'success' },
       toastTimer: null,
       serviceOnline: false,
-      healthText: '正在连接服务'
+      offline: window.location.protocol === 'file:',
+      healthText: window.location.protocol === 'file:' ? '离线预览模式' : '正在连接服务'
     };
   },
   computed: {
@@ -1868,7 +1854,8 @@ createApp({
     }
   },
   mounted() {
-    this.refresh();
+    this.refreshIcons();
+    if (!this.offline) this.refresh();
     window.addEventListener('keydown', this.handleGlobalKeydown);
     window.addEventListener('click', this.closeMenus);
   },
@@ -2441,6 +2428,10 @@ createApp({
       message.open = message.open === index ? null : index;
     },
     async ask() {
+      if (this.offline) {
+        this.notify('离线预览模式，启动后端服务后才能提问', 'error');
+        return;
+      }
       const text = this.question.trim();
       if (!text || this.busy) return;
       if (!this.selectedKbIds.length) {
@@ -2555,6 +2546,17 @@ createApp({
     }
   }
 }).mount('#app');
+} else {
+  document.body.innerHTML = `
+    <main style="min-height:100vh;display:grid;place-items:center;background:#f4f5f3;color:#17201d;font:15px/1.7 'Microsoft YaHei',sans-serif;padding:24px">
+      <section style="width:min(560px,100%);background:#fff;border:1px solid #e4e7e3;border-radius:10px;padding:36px;box-shadow:0 18px 55px rgba(23,32,29,.1);text-align:center">
+        <div style="font-size:40px;margin-bottom:14px">📦</div>
+        <h1 style="font-size:22px;margin:0 0 10px">缺少同目录的依赖文件</h1>
+        <p style="margin:0 0 18px;color:#707a75">页面已按离线预览打开，但没有找到 <strong>vendor/</strong> 和 <strong>js/</strong>。请把 <strong>index.html</strong> 与这两个目录放在一起再打开，不要单独复制 HTML 文件。</p>
+        <p style="margin:0 0 18px">完整功能请启动 <strong>DocInsightApplication</strong>，然后访问：</p>
+        <a href="http://127.0.0.1:8080" style="display:inline-block;background:#1e8a5b;color:#fff;text-decoration:none;border-radius:8px;padding:10px 18px;font-weight:600">http://127.0.0.1:8080</a>
+      </section>
+    </main>`;
 }
 </script>
 </body>
