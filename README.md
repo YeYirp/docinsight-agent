@@ -1,389 +1,168 @@
 # DocInsight Agent
 
-面向多类型资料的本地知识问答 Agent。支持 PDF、Word、Markdown、TXT 和常见视频格式，
-文档按标题层级切分，视频通过 faster-whisper 转写为带时间戳的文本切片，再经过混合检索、
-流式生成和引用溯源返回答案。
+把 PDF / Word / Markdown / TXT / 视频变成可以提问、可以溯源的知识库。单机运行，一个 SQLite 文件同时承担存储、全文索引和向量检索，不需要额外部署数据库或向量服务。
 
 ![Java](https://img.shields.io/badge/Java-21-blue)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.2-brightgreen)
+![Spring%20Boot](https://img.shields.io/badge/Spring%20Boot-4.1.2-brightgreen)
 ![LangChain4j](https://img.shields.io/badge/LangChain4j-1.16.3-orange)
+![SQLite](https://img.shields.io/badge/SQLite-FTS5%20%2B%20vec0-lightgrey)
+![Vue](https://img.shields.io/badge/Vue-3-42b883)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-## 功能
+## 30 秒跑起来
 
-- **文档解析**：PDF 逐页提取并保留页码；DOCX 按段落样式识别标题；Markdown/TXT 按行解析。
-- **视频知识库**：支持 MP4、MOV、MKV、WEBM、AVI、M4V，自动提取语音、生成时间戳切片，
-  支持在浏览器中拖动播放。
-- **结构化切片**：按标题层级把内容切成 Chunk，保留章节路径、页码、段落或视频时间位置。
-- **混合检索**：向量召回 + FTS5 关键词召回，按权重融合；向量服务不可用时自动降级为关键词检索。
-- **本地持久化**：SQLite 保存知识库、文档元数据、文本切片、FTS5 索引和向量；
-  视频原文件和 Whisper 模型不写入数据库。
-- **引用溯源**：回答关联具体 Chunk，前端可以展开查看原文片段和章节/页码/时间位置。
-- **文件查看与编辑**：点击文件名即可查看原件；MD/TXT 支持在线编辑并自动重建索引，
-  PDF 内嵌预览、Word 展示解析后的分节内容、视频直接播放，这些二进制文件只读。
-- **流式回答**：SSE 返回阶段进度、引用来源和增量文本，同时记录耗时与 Token。
-- **知识库工作区**：支持新建、编辑名称和描述、原文件目录管理、删除、搜索、排序、
-  文档/画廊视图和多知识库问答。
-- **运行监控**：提供 `/api/health` 和 `/api/metrics`。
+```bash
+git clone https://github.com/YeYirp/docinsight-agent.git
+cd docinsight-agent
+./mvnw spring-boot:run          # Windows 用 .\mvnw.cmd spring-boot:run
+```
 
-## 架构
+打开 <http://127.0.0.1:8080>，新建知识库，把 `sample/示例产品手册.md` 拖进去，然后问「备份多久做一次」。
+
+**不配置任何模型 Key 也能用。** 此时走抽取式回答，直接摘录检索到的原文；关键词检索、引用溯源、SSE 流式和知识库管理全部可用。配上 Key 后自动切换为模型生成：
+
+```bash
+export LLM_API_KEY=sk-xxx        # Windows: $env:LLM_API_KEY="sk-xxx"
+export EMBEDDING_API_KEY=sk-xxx  # 不配则只做关键词检索
+```
+
+要求：Java 21（自带 Maven Wrapper）；不要求安装 SQLite；视频功能另需 Python 3.10+ 与 faster-whisper。
+随包只带 Windows x86_64 的 sqlite-vec 扩展，macOS / Linux 首次启动前需设置 `SQLITE_VEC_EXTENSION` 指向本机 vec0 动态库，否则数据源初始化失败。
+
+## 能力速览
+
+| | |
+| --- | --- |
+| 解析 | PDF 逐页提取并保留页码；DOCX 按段落样式识别标题；Markdown / TXT 按行解析；先落盘原件再从磁盘解析，不把整份文件留在内存 |
+| 切片 | 按标题层级切分，保留章节路径与页码 / 段落 / 视频时间位置 |
+| 检索 | vec0 向量召回 + FTS5 关键词召回加权融合；向量服务不可用时自动降级为关键词检索 |
+| 回答 | SSE 依次返回阶段进度、引用来源、增量文本，同时记录耗时与 Token |
+| 溯源 | 回答下方每条引用可展开原文片段与定位 |
+| 文件 | 点击文件名查看原件；MD / TXT 在线编辑并自动重建索引；PDF 内嵌预览、Word 分节展示、视频拖动播放 |
+| 视频 | MP4 / MOV / MKV / WEBM / AVI / M4V，本地 faster-whisper 转写为带时间戳切片，异步任务上报进度 |
+| 知识库 | 新建、改名与描述、原文件目录管理、删除、搜索、排序、列表与画廊视图、一次最多勾选 20 个库联合问答 |
+
+限制：文档单文件 50MB（应用内校验），multipart 请求上限 512MB（`MAX_UPLOAD_SIZE`），视频默认 500MB / 120 分钟。
+直接双击 `src/main/resources/static/index.html` 会进入离线预览模式，只保留对话页且不发起后端请求，不能提问。
+
+## 怎么工作的
 
 ```mermaid
 flowchart LR
-    UI[浏览器 / Vue] --> KC[KnowledgeBaseController]
-    UI --> CC[ChatController]
-
-    KC --> DI[DocumentIngestionService]
-    DI --> DP[DocumentParser]
-    DP --> CH[Chunker]
-    CH --> DS[DocumentStore]
-
-    KC --> VJ[VideoIngestionJobService]
-    VJ --> VS[VideoStorage]
-    VJ --> FW[FasterWhisper worker]
-    FW --> VI[VideoIngestionService]
-    VI --> CH
-
-    DS --> DB[(SQLite)]
-    DB --> FTS[FTS5]
-    DB --> VEC[sqlite-vec]
-
-    CC --> AS[AgentService]
-    AS --> RS[RetrievalService]
-    RS --> DB
-    AS --> LLM[OpenAI 兼容模型]
-    AS --> TOOLS[Function Calling]
+    UI[浏览器 Vue] --> KB[知识库 / 文档接口]
+    KB --> P[解析器] --> C[标题层级切片] --> S[(SQLite)]
+    KB --> V[视频异步任务] --> W[faster-whisper] --> C
+    S --- F[FTS5 全文索引]
+    S --- X[sqlite-vec 向量]
+    UI --> A[问答 Agent] --> R[混合检索] --> S
+    A --> L[OpenAI 兼容模型]
 ```
 
-一次问答顺序：问题关键词提取 → 混合检索 → 必要时调用工具 → 流式生成 → 回传引用。
-
-## 环境要求
-
-- Java 21
-- 项目自带 Maven Wrapper
-- 视频功能额外需要 Python 3.10+ 和 faster-whisper
-- 不要求单独安装 SQLite 数据库
-- 随包只提供 Windows x86_64 的 sqlite-vec 扩展；macOS / Linux 首次启动前需要设置
-  `SQLITE_VEC_EXTENSION` 指向本机的 vec0 动态库，否则数据源初始化会失败
-
-## 快速开始
-
-```powershell
-git clone https://github.com/YeYirp/docinsight-agent.git
-cd docinsight-agent
-.\mvnw.cmd spring-boot:run
-```
-
-Linux / macOS：
-
-```bash
-./mvnw spring-boot:run
-```
-
-启动后访问：
-
-```text
-http://127.0.0.1:8080
-```
-
-直接双击 `src/main/resources/static/index.html` 也能打开，页面会进入离线预览模式：只保留对话页，
-不发起任何后端请求，因此不能提问，也不显示知识库。离线预览依赖同目录下的 `vendor/` 和 `js/`，
-不要单独复制 HTML 文件。需要真实问答请启动应用后访问 `http://127.0.0.1:8080`。
-
-使用步骤：
-
-1. 打开「知识库」，在右上角新建知识库。
-2. 上传文档或视频。
-3. 普通文档会立即解析；视频会创建异步任务，页面显示转写状态。
-4. 在「新对话」中勾选一个或多个知识库后提问。
-5. 点击回答下方的引用项查看原文片段、页码或视频时间位置。
-
-普通文档单文件上限为 50MB；视频默认上限为 500MB、120 分钟。
-
-不配置任何模型 Key 也可以运行。此时使用抽取式回答，直接摘录检索到的原文；
-关键词检索、引用、SSE 和知识库管理仍然可用。
-
-## 视频知识库
-
-安装视频转写依赖：
-
-```powershell
-python -m pip install -r scripts/video-requirements.txt
-```
-
-依赖版本已经固定为 faster-whisper `1.2.1` 和 PyAV `16.0.1`，避免当前版本组合的兼容问题。
-
-首次处理视频会下载 Whisper 模型。默认配置是：
-
-- 模型：`small`
-- 计算设备：`auto`
-- CPU 计算类型：`int8`
-- 模型缓存：`data/models`
-- 视频原件：与文档原件同目录，即 `data/sourcefiles/知识库名称/`
-  （仅旧版本遗留文件仍从 `data/media` 读取）
-- worker 空闲 10 分钟后释放模型内存
-
-国内网络可设置：
-
-```powershell
-$env:VIDEO_HF_ENDPOINT="https://hf-mirror.com"
-```
-
-视频处理采用异步任务：
-
-```text
-QUEUED -> PROCESSING -> DONE
-                     \-> FAILED
-```
-
-原视频保存在磁盘，SQLite 只保存文件名、时长和转写切片。当前视频分析范围是语音转写；
-幻灯片、界面文字和画面场景识别尚未默认启用，可后续接入 PySceneDetect 和 OCR。
-
-异步任务状态保存在当前进程内存中。应用重启后，未完成任务的查询状态会丢失，
-但已经入库的文档和已生成切片不受影响。
-
-## 数据存放
-
-默认数据目录：
-
-```text
-data/
-├── docinsight.db       SQLite：知识库、切片、FTS5、向量
-├── sourcefiles/        每个知识库一个原文件目录
-│   └── 知识库名称/
-│       ├── 文档原件
-│       └── 视频原件
-├── models/             Whisper 模型缓存
-└── native/             sqlite-vec 等运行时释放文件
-```
-
-`data/` 已加入 `.gitignore`。备份时复制整个 `data/` 目录即可。旧版本上传的文档没有原件时，
-文件查看页会回退展示已解析的索引文本。
-
-每个知识库可以在自己的设置页查看独立路径，并通过应用内文件夹浏览器修改。路径字段不可手动输入；
-文件夹浏览器直接读取后端所在机器的目录，因此远程访问和 Docker 环境也可使用。
-全局根目录通过 `SOURCEFILES_ROOT` 配置。
-
-数据库体积主要取决于切片数量和向量数量。视频原文件不进入 SQLite；启用 Embedding 后，
-向量通常会比文本本身占用更多空间。
-
-## 性能与资源
-
-- SQLite 使用 HikariCP 复用连接，`vec0` 扩展只在物理连接建立时加载。
-- 切片和向量写入使用批量 JDBC。
-- Embedding 默认每 32 条一批发送，缺失向量分批生成和写回。
-- FTS5 使用 contentless 索引，不重复保存切片正文和 ID。
-- PDF / DOCX / 文本先保存原件，再从磁盘文件解析，避免把整份文件留在内存中。
-- Web 线程默认限制为 32，可通过环境变量调整。
-- Whisper worker 空闲后释放模型内存，下一次视频按需重新加载。
-- 旧数据库首次启动会自动重建一次 FTS 索引，之后不会重复重建。
+一次问答：问题关键词提取 → 混合检索 → 必要时调用工具（限轮次）→ 流式生成 → 回传引用。
+检索侧的动态 SQL（范围过滤、打分表达式、FTS / LIKE 召回、KNN）由 MyBatis 承载，批量写入走 JDBC。
 
 ## 配置
 
-`.env` 不会被 Spring Boot 自动读取。Windows / IDE 请使用运行配置或系统环境变量；
-Docker 可以使用 compose 的 `env_file`。
+`.env` 不会被 Spring Boot 自动读取：本机用环境变量或 IDE 运行配置，Docker 用 compose 的 `env_file`。
+下面是常改的几项，完整清单见 [`.env.example`](.env.example) 与 [`application.yml`](src/main/resources/application.yml)。
 
-| 环境变量 | 默认值 | 说明 |
+| 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `SERVER_PORT` | `8080` | 服务端口 |
-| `TOMCAT_MAX_THREADS` | `32` | Web 最大工作线程 |
-| `TOMCAT_MIN_SPARE_THREADS` | `4` | Web 最小空闲线程 |
-| `MAX_UPLOAD_SIZE` | `512MB` | multipart 最大请求大小 |
-| `LLM_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI 兼容 LLM 网关 |
-| `LLM_API_KEY` | 空 | 不填则使用抽取式回答 |
-| `LLM_MODEL` | `deepseek-chat` | LLM 模型名 |
-| `LLM_TIMEOUT_SECONDS` | `120` | 单次 LLM 调用超时 |
-| `MAX_TOOL_ROUNDS` | `3` | 工具调用最大轮次 |
-| `EMBEDDING_BASE_URL` | `https://api.siliconflow.cn/v1` | Embedding 服务地址 |
-| `EMBEDDING_API_KEY` | 空 | 不填则只做关键词检索 |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` | 向量模型 |
-| `EMBEDDING_DIMENSION` | `1024` | 向量维度，必须和 `chunk_vector` 一致 |
-| `EMBEDDING_BATCH_SIZE` | `32` | 单次 Embedding 最大文本条数 |
-| `DATABASE_URL` | `jdbc:sqlite:./data/docinsight.db` | SQLite 文件路径 |
-| `SOURCEFILES_ROOT` | `./data/sourcefiles` | 所有知识库原文件根目录 |
-| `SQLITE_VEC_EXTENSION` | 空 | 可选外部 sqlite-vec 扩展路径 |
-| `DB_POOL_SIZE` | `4` | SQLite 连接池上限 |
-| `RAG_TOP_K` | `4` | 最终返回块数 |
-| `RAG_CHUNK_SIZE` | `600` | 单个 Chunk 最大字符数 |
-| `RAG_CHUNK_OVERLAP` | `80` | Chunk 重叠字符数 |
-| `VIDEO_ENABLED` | `true` | 是否启用视频摄取 |
-| `VIDEO_PYTHON_COMMAND` | 自动查找 | Python 可执行文件，例如 `python` |
-| `VIDEO_WHISPER_MODEL` | `small` | 模型名或本地 faster-whisper 模型目录 |
-| `VIDEO_WHISPER_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
-| `VIDEO_WHISPER_COMPUTE_TYPE` | `int8` | CPU 用 `int8`，GPU 可用 `float16` |
-| `VIDEO_WHISPER_LANGUAGE` | `auto` | 转写语言，中文可填 `zh` |
-| `VIDEO_HF_ENDPOINT` | 空 | Hugging Face 模型下载镜像 |
-| `VIDEO_MAX_SIZE_MB` | `500` | 单个视频大小上限 |
-| `VIDEO_MAX_DURATION_MINUTES` | `120` | 单个视频时长上限 |
-| `VIDEO_MODEL_DIR` | `./data/models` | Whisper 模型缓存目录 |
-| `VIDEO_STARTUP_TIMEOUT_SECONDS` | `600` | worker 启动/模型加载超时 |
-| `VIDEO_TRANSCRIBE_TIMEOUT_MINUTES` | `120` | 单次视频转写超时 |
-| `VIDEO_WORKER_IDLE_MINUTES` | `10` | worker 空闲释放时间，0 表示常驻 |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | DeepSeek / 空 / `deepseek-chat` | OpenAI 兼容网关；Key 为空走抽取式回答 |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | SiliconFlow / 空 / `BAAI/bge-m3` | Key 为空只做关键词检索 |
+| `EMBEDDING_DIMENSION` | `1024` | 必须与 `chunk_vector` 表维度一致 |
+| `RAG_TOP_K` / `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `4` / `600` / `80` | 返回块数与切片长度 |
+| `DATABASE_URL` | `jdbc:sqlite:./data/docinsight.db` | SQLite 文件 |
+| `SOURCEFILES_ROOT` | `./data/sourcefiles` | 原文件根目录，每个知识库一个子目录 |
+| `MAX_UPLOAD_SIZE` | `512MB` | multipart 上限 |
+| `VIDEO_ENABLED` / `VIDEO_WHISPER_MODEL` | `true` / `small` | 视频摄取开关与模型 |
 
-接入 LLM：
-
-```powershell
-$env:LLM_API_KEY="sk-xxx"
-.\mvnw.cmd spring-boot:run
-```
-
-启用向量检索：
-
-```powershell
-$env:EMBEDDING_API_KEY="sk-xxx"
-```
-
-## API
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/api/knowledge-bases` | 知识库列表 |
-| `POST` | `/api/knowledge-bases` | 新建知识库，JSON 字段 `name`、`description` |
-| `PUT` | `/api/knowledge-bases/{id}` | 修改名称、描述和原文件目录 |
-| `GET` | `/api/knowledge-bases/{id}` | 知识库详情 |
-| `GET` | `/api/knowledge-bases/{id}/storage` | 当前知识库原文件绝对路径 |
-| `DELETE` | `/api/knowledge-bases/{id}` | 删除知识库、文档、索引和视频文件 |
-| `GET` | `/api/knowledge-bases/{id}/documents` | 知识库文档列表 |
-| `POST` | `/api/knowledge-bases/{id}/documents` | 上传文档或视频，multipart 字段名 `file` |
-| `POST` | `/api/docs/upload` | 上传独立文档或视频，multipart 字段名 `file` |
-| `GET` | `/api/docs` | 全部文档列表 |
-| `DELETE` | `/api/docs/{id}` | 删除文档、索引和对应视频文件 |
-| `GET` | `/api/docs/{id}/media` | 视频播放，支持 HTTP Range |
-| `GET` | `/api/docs/{id}/content` | 文件查看页所需的内容结构 |
-| `PUT` | `/api/docs/{id}/content` | 保存 MD/TXT 文件内容并重建索引 |
-| `GET` | `/api/docs/{id}/source` | 普通文档原件，支持 HTTP Range |
-| `GET` | `/api/settings/directories?path=...` | 浏览后端可用文件夹，供知识库路径选择 |
-| `GET` | `/api/ingestion-jobs/{id}` | 查询异步视频转写任务 |
-| `POST` | `/api/ask` | SSE 问答 |
-| `GET` | `/api/health` | 服务与数据库健康检查 |
-| `GET` | `/api/metrics` | 请求数、错误数、工具调用、Token 和平均耗时 |
-
-视频上传会返回 `202 Accepted`：
-
-```json
-{
-  "async": true,
-  "jobId": "任务-id",
-  "docId": "文档-id",
-  "name": "demo.mp4",
-  "status": "QUEUED",
-  "stage": "等待处理"
-}
-```
-
-查询任务：
+## 数据放在哪
 
 ```text
-GET /api/ingestion-jobs/{jobId}
+data/
+├── docinsight.db     知识库、切片、FTS5 索引、向量
+├── sourcefiles/      每个知识库一个目录，放文档与视频原件
+├── models/           Whisper 模型缓存
+└── native/           sqlite-vec 运行时释放文件
 ```
 
-问答请求：
+`data/` 已在 `.gitignore` 中，备份整个目录即可。视频原件和 Whisper 模型不写入数据库；启用 Embedding 后向量通常比正文更占空间。
+知识库可以单独改原文件目录（应用内文件夹浏览器选择，不可手输路径），全局根目录由 `SOURCEFILES_ROOT` 决定。
+
+## 视频转写
+
+```bash
+python -m pip install -r scripts/video-requirements.txt   # 已固定 faster-whisper 1.2.1 + PyAV 16.0.1
+```
+
+首次处理会下载模型（默认 `small`、CPU `int8`、缓存在 `data/models`；国内可设 `VIDEO_HF_ENDPOINT=https://hf-mirror.com`），worker 空闲 10 分钟后释放模型内存。
+上传视频返回 `202`，任务状态 `QUEUED → PROCESSING → DONE / FAILED`，前端轮询 `/api/ingestion-jobs/{id}` 显示进度。
+两点已知边界：任务状态只存在当前进程内存里，重启后未完成任务的查询状态丢失（已入库文档不受影响）；当前只做语音转写，画面文字与场景识别未启用。
+
+## 接口
+
+| 方法 | 路径 |
+| --- | --- |
+| `POST` | `/api/ask` — SSE 问答，body 为 `question`、`knowledgeBaseIds`（最多 20 个） |
+| `GET` | `/api/health`、`/api/metrics` — 健康检查与请求数 / 错误数 / 工具调用 / Token / 平均耗时 |
+| `GET` `POST` `PUT` `DELETE` | `/api/knowledge-bases`、`/api/knowledge-bases/{id}` — 知识库增删改查 |
+| `GET` `POST` | `/api/knowledge-bases/{id}/documents` — 文档列表与上传（multipart 字段名 `file`） |
+| `GET` `PUT` `DELETE` | `/api/docs/{id}`、`/content`、`/source`、`/media` — 文档、在线编辑、原件与视频流（支持 Range） |
+| `GET` | `/api/ingestion-jobs/{id}`、`/api/settings/directories` — 转写任务与目录浏览 |
+
+<details>
+<summary>请求与响应示例</summary>
 
 ```json
-{
-  "question": "备份多久做一次？",
-  "sessionId": "demo-session",
-  "knowledgeBaseIds": ["知识库-id-1", "知识库-id-2"]
-}
+// POST /api/ask
+{ "question": "备份多久做一次？", "sessionId": "demo", "knowledgeBaseIds": ["kb-1", "kb-2"] }
+
+// SSE event: sources
+[{ "index": 1, "docName": "示例产品手册.md",
+   "heading": "6. 数据备份与恢复 > 6.1 备份策略",
+   "location": "第 3 页", "snippet": "系统默认每日凌晨 2 点执行一次全量备份…",
+   "score": 0.82 }]
+
+// 视频上传返回 202
+{ "async": true, "jobId": "job-1", "docId": "doc-1",
+  "name": "demo.mp4", "status": "QUEUED", "stage": "等待处理" }
 ```
 
-`sources` 事件示例：
+</details>
 
-```json
-[
-  {
-    "index": 1,
-    "docName": "示例产品手册.md",
-    "heading": "6. 数据备份与恢复 > 6.1 备份策略",
-    "location": "第 3 页",
-    "snippet": "系统默认每日凌晨 2 点执行一次全量备份…",
-    "score": 0.82
-  }
-]
+## 开发
+
+```bash
+./mvnw test                                     # 后端：解析、入库、检索、持久化、端到端问答
+node --test src/test/js/doc-utils.test.js       # 前端工具函数（Node 仅用于测试，运行不需要）
 ```
-
-## 项目结构
 
 ```text
 src/main/java/com/example/docinsight
-├── DocInsightApplication.java
-├── config/
-│   ├── AiProperties / AiConfig
-│   ├── VideoProperties
-│   ├── DatabaseConfig / SqliteDataSource
-│   └── SqliteSchema / SqliteExtensionLoader
-├── controller/
-│   ├── KnowledgeBaseController
-│   ├── DocumentController
-│   ├── IngestionJobController
-│   ├── ChatController
-│   └── ApiExceptionHandler
-├── model/
-│   ├── KnowledgeBase / DocumentInfo / Chunk / AskInput
-│   ├── DocumentContentView / UpdateKnowledgeBaseInput
-│   └── VideoIngestionJob
-└── service/
-    ├── DocumentParser / Chunker / DocumentFormat
-    ├── DocumentIngestionService
-    ├── DocumentSourceStorage / DocumentViewService
-    ├── SourceFileStorage / DocumentEditService
-    ├── DocumentStore
-    ├── EmbeddingClient / RetrievalService
-    ├── Tools / AgentService / MetricsService
-    ├── VideoTranscriber / VideoTranscript
-    ├── FasterWhisperTranscriber
-    ├── VideoStorage / VideoIngestionService
-    └── VideoIngestionJobService
-
-src/main/resources
-├── static/
-├── schema.sql
-├── application.yml
-└── python/faster_whisper_worker.py
-
-scripts/video-requirements.txt
+├── config      SQLite 数据源与 schema、vec0 扩展加载、AI 与视频配置
+├── controller  知识库、文档、问答、目录浏览、统一异常处理
+├── mapper      MyBatis 检索查询（动态 SQL 在同名 XML 里）
+├── model       知识库、文档、切片、入参
+└── service     解析 → 切片 → 存储 → 检索 → Agent 生成 → 视频转写
+src/main/resources/static/   单文件 Vue 应用（vendor/ 与 js/ 必须同目录）
+src/main/resources/python/   faster-whisper worker
 ```
 
 ## 设计取舍
 
-**为什么按标题切分？**
+- **按标题切分而非固定长度**：固定窗口会把标题和上一节内容切到一起，按标题保留章节语义，引用定位也更准。
+- **向量不可用就降级**：向量是增强项，Embedding 失败时退回 FTS5 关键词召回，核心问答不断。
+- **视频不进数据库**：二进制会让 SQLite 迅速膨胀，原件放磁盘，库里只存转写文本和时间戳。
+- **工具调用限轮次**：模型可能反复调用工具不收敛，用轮次、超时和 Token 上限控制成本与延迟。
+- `webSearch` 目前是离线示例实现（`Tools.mockSearch`），接真实搜索只需替换该方法。
 
-固定长度容易把标题和上一节内容切在一起。按标题切分能保留章节语义，并让引用定位更准确。
+## 隐私
 
-**为什么向量服务失败要降级？**
-
-向量检索是增强项。Embedding 不可用时自动退回 FTS5 关键词检索，核心问答仍可用。
-
-**为什么视频不写入数据库？**
-
-视频二进制会让 SQLite 迅速膨胀。原文件放磁盘，数据库只保存转写文本和时间戳切片，
-备份和清理也更清晰。
-
-**为什么工具调用限轮次？**
-
-模型可能反复调用工具不收敛。当前通过轮次、超时和 Token 上限控制成本和延迟。
-
-`webSearch` 目前是离线示例实现，位于 `Tools.mockSearch`。接入真实搜索服务时只需替换该实现。
-
-## 测试
-
-```powershell
-.\mvnw.cmd test
-node --test src/test/js/doc-utils.test.js
-```
-
-Node.js 只用于前端工具函数测试，不是运行应用的必需项。
-
-## 隐私说明
-
-- 仓库不包含 API Key，密钥通过环境变量注入。
-- 视频原文件、SQLite 数据和 Whisper 模型默认保存在本地 `data/`。
-- 视频语音由本地 faster-whisper 处理。
-- 启用 Embedding 时，切片文本会发送到配置的 Embedding 服务。
-- 启用 LLM 时，问题和检索上下文会发送到配置的模型网关。
-- 当前 `webSearch` 为离线示例，不会主动访问互联网。
-- 示例文档为虚构内容。
+密钥只从环境变量注入，仓库不含 Key；文档原件、SQLite 数据、Whisper 模型和转写结果都留在本地 `data/`；视频语音由本地 faster-whisper 处理。
+联网只发生在你配置的调用里：启用 Embedding 时切片文本发往 Embedding 服务，启用 LLM 时问题与检索上下文发往模型网关；`webSearch` 不访问互联网。示例文档为虚构内容。
 
 ## License
 
-MIT。`src/main/resources/static/vendor/vue.global.prod.js` 来自 Vue 3（MIT）。
+MIT。前端 Vue 3、sqlite-vec、faster-whisper、PDFBox、Apache POI、LangChain4j 均按各自开源协议使用。
