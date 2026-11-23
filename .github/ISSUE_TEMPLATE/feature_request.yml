@@ -1,0 +1,35 @@
+name: 功能建议
+description: 提出新的解析格式、检索能力或界面改进
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题
+      description: 现在做不到什么，或者哪里别扭；请写实际使用场景
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的做法
+      description: 你设想的接口、交互或配置项
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 涉及范围
+      multiple: true
+      options:
+        - 文档解析与切片
+        - 检索与排序
+        - 回答生成与工具调用
+        - 视频转写
+        - 存储与配置
+        - 前端界面
+  - type: checkboxes
+    id: checks
+    attributes:
+      options:
+        - label: 我愿意提交 PR 实现
+        - label: 这个需求需要改动已有行为（请在描述里说明影响面）
