@@ -21,9 +21,4 @@ public record DocumentInfo(
         this(id, name, knowledgeBaseId, pages, chunks, sizeBytes,
                 System.currentTimeMillis(), false, 0);
     }
-
-    public DocumentInfo(String id, String name, int pages, int chunks, long sizeBytes) {
-        this(id, name, null, pages, chunks, sizeBytes,
-                System.currentTimeMillis(), false, 0);
-    }
 }

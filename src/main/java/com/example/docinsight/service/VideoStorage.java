@@ -32,10 +32,6 @@ public class VideoStorage {
                 mediaPath, Files.size(sourceFiles.path(mediaPath)));
     }
 
-    public StoredVideo store(MultipartFile file, String docId, String name) throws IOException {
-        return store(file, docId, name, null);
-    }
-
     public Path path(String mediaPath) {
         Path current = sourceFiles.path(mediaPath);
         if (Files.isRegularFile(current)) {

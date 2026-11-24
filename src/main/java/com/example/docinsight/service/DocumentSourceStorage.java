@@ -28,10 +28,6 @@ public class DocumentSourceStorage {
         return sourceFiles.store(file, name, knowledgeBaseDirectory);
     }
 
-    public String store(MultipartFile file, String docId, String name) throws IOException {
-        return store(file, docId, name, null);
-    }
-
     public Path path(String sourcePath) {
         Path current = sourceFiles.path(sourcePath);
         if (Files.isRegularFile(current)) {
