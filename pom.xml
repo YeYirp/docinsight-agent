@@ -23,7 +23,6 @@
         <mybatis-spring-boot.version>4.1.0</mybatis-spring-boot.version>
         <pdfbox.version>2.0.31</pdfbox.version>
         <poi.version>5.2.5</poi.version>
-        <spring-jdbc.version>7.0.9</spring-jdbc.version>
         <sqlite-jdbc.version>3.54.1.0</sqlite-jdbc.version>
     </properties>
 
@@ -39,12 +38,10 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-jdbc</artifactId>
-            <version>${spring-jdbc.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-tx</artifactId>
-            <version>${spring-jdbc.version}</version>
         </dependency>
         <dependency>
             <groupId>com.zaxxer</groupId>
@@ -79,6 +76,21 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
+            <exclusions>
+                <!-- 只读 .docx 的段落与样式，不做公式计算、图表绘制和旧版二进制格式 -->
+                <exclusion>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-math3</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.github.virtuald</groupId>
+                    <artifactId>curvesapi</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.zaxxer</groupId>
+                    <artifactId>SparseBitSet</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>

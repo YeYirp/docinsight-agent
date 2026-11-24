@@ -54,6 +54,24 @@ class DocumentPipelineTest {
     }
 
     @Test
+    void parsesDocxHeadingsAndTableRows() throws Exception {
+        DocumentParser parser = new DocumentParser();
+        byte[] docx;
+        try (var input = getClass().getResourceAsStream("/word-sample.docx")) {
+            assertThat(input).as("word-sample.docx 测试夹具").isNotNull();
+            docx = input.readAllBytes();
+        }
+
+        List<DocumentParser.Block> blocks = parser.parse("word-sample.docx", docx).blocks();
+
+        assertThat(blocks).anyMatch(block -> block.heading() && block.text().contains("备份策略"));
+        assertThat(blocks).anyMatch(block -> block.text().contains("全量备份") && !block.heading());
+        assertThat(blocks).anyMatch(block -> block.text().equals("项目 | 默认值")
+                && block.location().equals("表格"));
+        assertThat(blocks).allMatch(block -> !block.location().isBlank());
+    }
+
+    @Test
     void recognizesSupportedExtensionsCaseInsensitively() {
         assertThat(DocumentFormat.fromFilename("guide.PDF")).contains(DocumentFormat.PDF);
         assertThat(DocumentFormat.fromFilename("guide.docx")).contains(DocumentFormat.DOCX);
