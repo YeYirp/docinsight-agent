@@ -34,7 +34,8 @@ public class SqliteDataSource extends AbstractDataSource {
     private Connection openConnection() throws SQLException {
         SQLiteConfig config = new SQLiteConfig();
         config.enableLoadExtension(true);
-        config.setBusyTimeout(10_000);
+        // 批量入库会持写锁；太短的 busy_timeout 会让并发上传直接拿到 SQLITE_BUSY。
+        config.setBusyTimeout(30_000);
         config.setJournalMode(SQLiteConfig.JournalMode.WAL);
         config.setSynchronous(SQLiteConfig.SynchronousMode.NORMAL);
 

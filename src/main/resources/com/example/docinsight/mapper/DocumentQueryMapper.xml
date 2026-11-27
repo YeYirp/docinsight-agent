@@ -79,6 +79,8 @@
         WHERE <include refid="documentScope"/>
     </select>
 
+    <!-- vec0 的 document_id 是分区键：必须在 v 表上先过滤，k 才会按分区取最近邻；
+         只在外层 chunk 表过滤会先取全库 top-k，指定知识库时几乎召回不到目标文档。 -->
     <select id="vectorCandidates" resultMap="chunkRow">
         SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,
                v.distance
@@ -86,9 +88,23 @@
         JOIN chunk c ON v.chunk_key = c.rowid
         WHERE v.embedding MATCH vec_f32(#{queryVector})
           AND k = #{k}
+          AND <include refid="vectorScope"/>
           AND <include refid="documentScope"/>
         ORDER BY v.distance ASC
     </select>
+
+    <sql id="vectorScope">
+        <choose>
+            <when test="docIds == null">1 = 1</when>
+            <when test="docIds.size() == 0">1 = 0</when>
+            <otherwise>
+                v.document_id IN
+                <foreach collection="docIds" item="docId" open="(" separator="," close=")">
+                    #{docId}
+                </foreach>
+            </otherwise>
+        </choose>
+    </sql>
 
     <select id="ftsCandidates" resultMap="chunkRow">
         SELECT c.id, c.document_id, c.doc_name, c.heading, c.text, c.location,

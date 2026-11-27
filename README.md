@@ -75,7 +75,10 @@ flowchart LR
 | `RAG_TOP_K` / `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `4` / `600` / `80` | 返回块数与切片长度 |
 | `DATABASE_URL` | `jdbc:sqlite:./data/docinsight.db` | SQLite 文件 |
 | `SOURCEFILES_ROOT` | `./data/sourcefiles` | 原文件根目录，每个知识库一个子目录 |
-| `MAX_UPLOAD_SIZE` | `512MB` | multipart 上限 |
+| `MAX_UPLOAD_SIZE` | `512MB` | multipart 上限（须覆盖视频上限） |
+| `DOCUMENT_MAX_SIZE` | `50MB` | 单文档业务上限，与 multipart 上限分开配置 |
+| `SERVER_ADDRESS` | `127.0.0.1` | 监听地址；需局域网访问才改成 `0.0.0.0` |
+| `API_TOKEN` | 空 | 设置后 `/api/**` 需 `Authorization: Bearer <token>`；留空不鉴权 |
 | `VIDEO_ENABLED` / `VIDEO_WHISPER_MODEL` | `true` / `small` | 视频摄取开关与模型 |
 
 ## 数据放在哪
@@ -154,13 +157,17 @@ src/main/resources/python/   faster-whisper worker
 
 - **按标题切分而非固定长度**：固定窗口会把标题和上一节内容切到一起，按标题保留章节语义，引用定位也更准。
 - **向量不可用就降级**：向量是增强项，Embedding 失败时退回 FTS5 关键词召回，核心问答不断。
+- **混合检索用 RRF**：向量与关键词分数不同量纲，直接加权会让排序随分数分布漂移；改为按名次融合，并让 `document_id` 作为 vec0 分区键下推过滤，避免先取全局 top-k 再过滤导致指定知识库时召回为空。
+- **换 Embedding 模型自动重建索引**：记录模型指纹（含维度），模型变化即清空 `chunk_vector` 并懒加载重建，避免同维度换模型后新旧向量混在一个空间里产生噪声。
 - **视频不进数据库**：二进制会让 SQLite 迅速膨胀，原件放磁盘，库里只存转写文本和时间戳。
 - **工具调用限轮次**：模型可能反复调用工具不收敛，用轮次、超时和 Token 上限控制成本与延迟。
 - `webSearch` 目前是离线示例实现（`Tools.mockSearch`），接真实搜索只需替换该方法。
 
-## 隐私
+## 隐私与安全
 
 密钥只从环境变量注入，仓库不含 Key；文档原件、SQLite 数据、Whisper 模型和转写结果都留在本地 `data/`；视频语音由本地 faster-whisper 处理。
+
+服务默认只监听 `127.0.0.1`。若改成 `0.0.0.0` 或 `SERVER_ADDRESS=0.0.0.0` 暴露到局域网，请同时设置 `API_TOKEN`：之后所有 `/api/**` 都要求 `Authorization: Bearer <token>`。不设 token 时任何能访问端口的人都能读写删知识库、调用模型。原文件目录默认限制在 `SOURCEFILES_ROOT` 内；需要选择根目录之外的路径时显式设 `app.storage.allow-outside-root=true`（仅在可信网络中使用）。
 联网只发生在你配置的调用里：启用 Embedding 时切片文本发往 Embedding 服务，启用 LLM 时问题与检索上下文发往模型网关；`webSearch` 不访问互联网。示例文档为虚构内容。
 
 ## License

@@ -80,29 +80,51 @@ public class EmbeddingClient {
             if (data == null || !data.isArray()) {
                 return null;
             }
-            List<double[]> vectors = new ArrayList<>(data.size());
-            for (JsonNode item : data) {
-                JsonNode embedding = item.get("embedding");
-                if (embedding == null || !embedding.isArray()) {
-                    log.warn("embedding_response_missing_vector");
-                    return null;
-                }
-                double[] vector = new double[embedding.size()];
-                for (int i = 0; i < embedding.size(); i++) {
-                    vector[i] = embedding.get(i).asDouble();
-                }
+            List<double[]> vectors = parseData(data, inputs.size());
+            if (vectors == null) {
+                log.warn("embedding_response_invalid dataSize={}", data.size());
+                return null;
+            }
+            for (double[] vector : vectors) {
                 if (!validDimension(vector)) {
                     log.warn("embedding_dimension_mismatch expected={} actual={}",
                             props.embedding().dimension(), vector.length);
                     return null;
                 }
-                vectors.add(vector);
             }
-            return vectors.size() == inputs.size() ? vectors : null;
+            return vectors;
         } catch (Exception e) {
             log.warn("embedding_failed: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 按 OpenAI 规范的 index 字段回填向量。data 允许乱序，且可能缺 index
+     * （部分兼容实现），此时按出现顺序填到第一个空位。
+     */
+    static List<double[]> parseData(JsonNode data, int expectedCount) {
+        if (data == null || !data.isArray()) {
+            return null;
+        }
+        List<double[]> vectors = new ArrayList<>(java.util.Collections.nCopies(expectedCount, null));
+        for (JsonNode item : data) {
+            JsonNode embedding = item.get("embedding");
+            if (embedding == null || !embedding.isArray()) {
+                return null;
+            }
+            double[] vector = new double[embedding.size()];
+            for (int i = 0; i < embedding.size(); i++) {
+                vector[i] = embedding.get(i).asDouble();
+            }
+            JsonNode indexNode = item.get("index");
+            int position = indexNode == null ? vectors.indexOf(null) : indexNode.asInt();
+            if (position < 0 || position >= expectedCount || vectors.get(position) != null) {
+                return null;
+            }
+            vectors.set(position, vector);
+        }
+        return vectors.contains(null) ? null : vectors;
     }
 
     private String strip(String url) {

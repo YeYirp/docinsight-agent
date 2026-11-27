@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 "app.ai.api-key=",
                 "app.embedding.api-key=",
+                "app.storage.allow-outside-root=true",
                 "spring.datasource.url=jdbc:sqlite:target/test-data/knowledge-base-flow.db"
         })
 class KnowledgeBaseFlowTest {

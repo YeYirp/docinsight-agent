@@ -36,6 +36,8 @@ public class VideoIngestionJobService {
     private final VideoIngestionService ingestion;
     private final DocumentStore store;
     private final Map<String, VideoIngestionJob> jobs = new ConcurrentHashMap<>();
+    /** 用户已删除但后台转写尚未入库的 docId：任务完成后据此放弃入库并清理文件。 */
+    private final Map<String, Long> deletedDocIds = new ConcurrentHashMap<>();
     private final AtomicInteger threadNumber = new AtomicInteger();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "video-ingest-" + threadNumber.incrementAndGet());
@@ -67,7 +69,7 @@ public class VideoIngestionJobService {
                     + props.getMaxFileSizeMb() + "MB");
         }
 
-        String docId = UUID.randomUUID().toString().substring(0, 8);
+        String docId = UUID.randomUUID().toString();
         KnowledgeBase knowledgeBase = knowledgeBaseId == null
                 ? null : store.getKnowledgeBase(knowledgeBaseId);
         StoredVideo stored = storage.store(file, docId, name,
@@ -92,10 +94,29 @@ public class VideoIngestionJobService {
         return job;
     }
 
+    /** 删除文档时调用：后台任务若还在跑，入库前会检查这个墓碑并自我取消。 */
+    public void markDeleted(String docId) {
+        if (docId != null && !docId.isBlank()) {
+            deletedDocIds.put(docId, System.currentTimeMillis());
+        }
+    }
+
     private void process(VideoIngestionJob initial, StoredVideo stored, DocumentFormat format) {
         update(initial, PROCESSING, "正在转写视频", "", null);
         try {
+            if (deletedDocIds.containsKey(initial.docId())) {
+                storage.delete(stored.mediaPath());
+                update(initial, FAILED, "已取消", "文档已被删除", null);
+                return;
+            }
             DocumentInfo info = ingestion.ingestStored(stored, initial.knowledgeBaseId());
+            if (deletedDocIds.remove(initial.docId()) != null) {
+                // 入库与删除并发：删除请求先拿到了不存在的一行，这里补做清理。
+                store.remove(info.id());
+                storage.delete(stored.mediaPath());
+                update(initial, FAILED, "已取消", "文档已被删除", null);
+                return;
+            }
             update(initial, DONE, "已完成", "", info);
             log.info("视频摄取完成: {} ({})", initial.name(), info.chunks());
         } catch (Throwable error) {
@@ -121,6 +142,8 @@ public class VideoIngestionJobService {
             return (DONE.equals(job.status()) || FAILED.equals(job.status()))
                     && now - job.updatedAt() > 24L * 60 * 60 * 1000;
         });
+        deletedDocIds.entrySet().removeIf(entry ->
+                now - entry.getValue() > 24L * 60 * 60 * 1000);
     }
 
     private String cleanName(String originalName) {

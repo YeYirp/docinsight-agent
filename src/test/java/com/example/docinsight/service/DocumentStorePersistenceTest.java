@@ -88,6 +88,47 @@ class DocumentStorePersistenceTest {
     }
 
     @Test
+    void switchingEmbeddingModelRebuildsVectorIndex() throws Exception {
+        Path dataDirectory = Path.of(
+                "target", "test-data", "model-switch-" + UUID.randomUUID());
+        Path extension = SqliteExtensionLoader.resolve(dataDirectory, "");
+        String file = dataDirectory.resolve("docinsight.db").toAbsolutePath()
+                .toString().replace('\\', '/');
+        DataSource dataSource = new SqliteDataSource("jdbc:sqlite:" + file, extension);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        SqliteSchema.initialize(dataSource, jdbc, 3, "model-a");
+        jdbc.execute("INSERT INTO chunk_vector(document_id, chunk_key, embedding) "
+                + "VALUES ('d1', 1, vec_f32('[1,0,0]'))");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chunk_vector", Long.class)).isEqualTo(1);
+
+        // 同维度换模型：旧向量必须清空，否则新旧向量混在同一空间里变成噪声。
+        SqliteSchema.initialize(dataSource, jdbc, 3, "model-b");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chunk_vector", Long.class)).isZero();
+
+        // 相同模型重启不应清掉已经重建的向量。
+        jdbc.execute("INSERT INTO chunk_vector(document_id, chunk_key, embedding) "
+                + "VALUES ('d1', 1, vec_f32('[1,0,0]'))");
+        SqliteSchema.initialize(dataSource, jdbc, 3, "model-b");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chunk_vector", Long.class)).isEqualTo(1);
+    }
+
+    @Test
+    void vectorTableUsesCosineDistanceAndPartitionKey() throws Exception {
+        Path dataDirectory = Path.of(
+                "target", "test-data", "vec-schema-" + UUID.randomUUID());
+        Path extension = SqliteExtensionLoader.resolve(dataDirectory, "");
+        String file = dataDirectory.resolve("docinsight.db").toAbsolutePath()
+                .toString().replace('\\', '/');
+        DataSource dataSource = new SqliteDataSource("jdbc:sqlite:" + file, extension);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        SqliteSchema.initialize(dataSource, jdbc, 3, "m");
+        String ddl = jdbc.queryForObject(
+                "SELECT sql FROM sqlite_master WHERE name='chunk_vector'", String.class);
+        assertThat(ddl).contains("cosine").contains("document_id");
+    }
+
+    @Test
     void addsUploadTimeColumnToLegacyDatabase() throws Exception {
         Path dataDirectory = Path.of(
                 "target", "test-data", "legacy-" + UUID.randomUUID());

@@ -68,8 +68,39 @@ class RetrievalServiceTest {
         assertThat(hits).singleElement().satisfies(hit -> {
             assertThat(hit.chunk().id()).isEqualTo("d1#0");
             assertThat(hit.semanticUsed()).isTrue();
-            assertThat(hit.score()).isGreaterThan(0.5);
+            assertThat(hit.score()).isEqualTo(RetrievalService.rrfScore(1));
         });
+    }
+
+    @Test
+    void rrfFusionDependsOnlyOnRankNotOnRawScoreScale() {
+        // 两路各自的第一名 + 第二名，无论原始分是多少，融合后同一 chunk 名次相同。
+        DocumentStore store = mock(DocumentStore.class);
+        Chunk top = new Chunk("d1#0", "d1", "a.md", "标题", "正文", "第 1 行", null);
+        Chunk second = new Chunk("d1#1", "d1", "a.md", "标题", "正文2", "第 2 行", null);
+        when(store.hasChunks(null)).thenReturn(true);
+        when(store.chunksWithoutVectors(null, 32)).thenReturn(List.of());
+        when(store.keywordCandidates(anySet(), isNull(), eq(20))).thenReturn(List.of(
+                new DocumentStore.KeywordCandidate(top, 0.01, 0.0),
+                new DocumentStore.KeywordCandidate(second, 0.02, 0.0)));
+        when(store.vectorCandidates(any(double[].class), isNull(), eq(20)))
+                .thenReturn(List.of(new DocumentStore.VectorCandidate(second, 0.9)));
+        EmbeddingClient embedding = mock(EmbeddingClient.class);
+        when(embedding.enabled()).thenReturn(true);
+        when(embedding.embed(any())).thenReturn(List.of(new double[]{1.0, 0.0, 0.0}));
+
+        List<RetrievalService.Hit> hits = new RetrievalService(store, embedding, props)
+                .search("任意问题", Set.of("问题"), null, 2);
+        // second 同时是向量第一、关键词第二，应排在最前；top 只有关键词第一。
+        assertThat(hits.get(0).chunk().id()).isEqualTo("d1#1");
+        assertThat(hits.get(1).chunk().id()).isEqualTo("d1#0");
+    }
+
+    @Test
+    void embeddingTextIncludesHeadingForSymmetricRecall() {
+        Chunk chunk = new Chunk("d1#0", "d1", "a.md", "备份策略", "每日全量备份", "第 1 行", null);
+        assertThat(RetrievalService.embeddingText(chunk))
+                .isEqualTo("备份策略\n每日全量备份");
     }
 
     @Test

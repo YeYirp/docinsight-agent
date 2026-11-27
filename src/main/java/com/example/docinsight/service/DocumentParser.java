@@ -63,22 +63,62 @@ public class DocumentParser {
         try (PDDocument document = PDDocument.load(input)) {
             pages = document.getNumberOfPages();
             PDFTextStripper stripper = new PDFTextStripper();
+            // 先收集每页的行，找出反复出现的首尾行（页眉/页脚/页码）再统一过滤。
+            List<List<String>> pageLines = new ArrayList<>();
             for (int page = 1; page <= pages; page++) {
                 stripper.setStartPage(page);
                 stripper.setEndPage(page);
-                String text = stripper.getText(document);
-                String location = "第 " + page + " 页";
-                for (String line : text.split("\\r?\\n")) {
+                List<String> lines = new ArrayList<>();
+                for (String line : stripper.getText(document).split("\\r?\\n")) {
                     String trimmed = line.trim();
-                    if (trimmed.isEmpty()) {
+                    if (!trimmed.isEmpty()) {
+                        lines.add(trimmed);
+                    }
+                }
+                pageLines.add(lines);
+            }
+            java.util.Set<String> repeated = findRepeatedEdges(pageLines);
+            for (int page = 1; page <= pages; page++) {
+                String location = "第 " + page + " 页";
+                for (String line : pageLines.get(page - 1)) {
+                    if (repeated.contains(line)) {
                         continue;
                     }
-                    boolean heading = isHeading(trimmed);
-                    blocks.add(new Block(trimmed, heading, heading ? guessLevel(trimmed) : 0, location));
+                    boolean heading = isHeading(line);
+                    blocks.add(new Block(line, heading, heading ? guessLevel(line) : 0, location));
                 }
             }
         }
         return new Parsed(filename, pages, blocks);
+    }
+
+    /** 在超过一半页面重复出现的首尾行视为页眉/页脚，避免污染检索词与向量。 */
+    static java.util.Set<String> findRepeatedEdges(List<List<String>> pageLines) {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        int threshold = Math.max(2, (pageLines.size() + 1) / 2);
+        for (List<String> lines : pageLines) {
+            if (lines.isEmpty()) {
+                continue;
+            }
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            int edgeCount = Math.min(3, lines.size());
+            for (int i = 0; i < edgeCount; i++) {
+                seen.add(lines.get(i));
+            }
+            for (int i = Math.max(0, lines.size() - edgeCount); i < lines.size(); i++) {
+                seen.add(lines.get(i));
+            }
+            for (String line : seen) {
+                counts.merge(line, 1, Integer::sum);
+            }
+        }
+        java.util.Set<String> repeated = new java.util.HashSet<>();
+        counts.forEach((line, count) -> {
+            if (count >= threshold) {
+                repeated.add(line);
+            }
+        });
+        return repeated;
     }
 
     private Parsed parseDocx(String filename, InputStream input) throws IOException {
@@ -112,13 +152,19 @@ public class DocumentParser {
                 }
             }
         }
+        // DOCX 没有可靠页码：location 用"第 N 段"，pages 只作文档规模估计，
+        // 不冒充真实页数（回答提示词要求不编造页码）。
         return new Parsed(filename, Math.max(1, paragraphs / 40 + 1), blocks);
     }
 
     private Parsed parseText(String filename, InputStream input) throws IOException {
         List<Block> blocks = new ArrayList<>();
+        // 中文 Windows 的 txt 常是 GBK；强制 UTF-8 会静默解析成乱码且不报错。
+        // 先按 BOM 判断，否则用严格 UTF-8 试读，失败就回退 GB18030（GBK 超集）。
+        byte[] bytes = input.readAllBytes();
+        java.nio.charset.Charset charset = detectCharset(bytes);
         try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(input, StandardCharsets.UTF_8))) {
+                new InputStreamReader(new ByteArrayInputStream(bytes), charset))) {
             String line;
             int lineNumber = 0;
             while ((line = reader.readLine()) != null) {
@@ -133,6 +179,28 @@ public class DocumentParser {
             }
         }
         return new Parsed(filename, 1, blocks);
+    }
+
+    static java.nio.charset.Charset detectCharset(byte[] bytes) {
+        if (bytes.length >= 3 && (bytes[0] & 0xFF) == 0xEF
+                && (bytes[1] & 0xFF) == 0xBB && (bytes[2] & 0xFF) == 0xBF) {
+            return StandardCharsets.UTF_8;
+        }
+        if (bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xFE) {
+            return java.nio.charset.StandardCharsets.UTF_16LE;
+        }
+        if (bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFE && (bytes[1] & 0xFF) == 0xFF) {
+            return java.nio.charset.StandardCharsets.UTF_16BE;
+        }
+        java.nio.charset.CharsetDecoder strict = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+        try {
+            strict.decode(java.nio.ByteBuffer.wrap(bytes));
+            return StandardCharsets.UTF_8;
+        } catch (java.nio.charset.CharacterCodingException e) {
+            return java.nio.charset.Charset.forName("GB18030");
+        }
     }
 
     static boolean isHeading(String text) {

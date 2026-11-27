@@ -62,8 +62,7 @@ public class ChatController {
             status.put("vecVersion", scalar(connection, "SELECT vec_version()"));
             status.put("fts5", tableExists(connection, "chunk_fts"));
             status.put("vectorTable", tableExists(connection, "chunk_vector"));
-            String url = connection.getMetaData().getURL();
-            status.put("path", url == null ? "" : url.replace("jdbc:sqlite:", ""));
+            // 不返回数据库绝对路径：它会泄露本机用户名与目录结构。
             status.put("persistent", true);
         } catch (Exception error) {
             status.put("status", "DOWN");

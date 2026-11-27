@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class DocumentEditService {
@@ -21,6 +23,8 @@ public class DocumentEditService {
     private final DocumentParser parser;
     private final Chunker chunker;
     private final DocumentViewService viewService;
+    /** 同一文档的编辑串行化，避免两个请求互相覆盖对方的修改。 */
+    private final Map<String, Object> locks = new ConcurrentHashMap<>();
 
     public DocumentEditService(DocumentStore store, DocumentSourceStorage sourceStorage,
                                DocumentParser parser, Chunker chunker,
@@ -33,6 +37,13 @@ public class DocumentEditService {
     }
 
     public DocumentContentView updateText(String docId, String text) throws IOException {
+        Object lock = locks.computeIfAbsent(docId, key -> new Object());
+        synchronized (lock) {
+            return doUpdate(docId, text);
+        }
+    }
+
+    private DocumentContentView doUpdate(String docId, String text) throws IOException {
         DocumentInfo document = store.document(docId);
         if (document == null) {
             throw new IllegalArgumentException("文档不存在");
@@ -51,33 +62,44 @@ public class DocumentEditService {
             throw new IllegalStateException("原文件不存在");
         }
 
-        String previous = Files.readString(path, StandardCharsets.UTF_8);
+        // 1. 先在临时文件里写新内容并解析、切块。任何一步失败都不碰原文件。
         Path temporary = Files.createTempFile(path.getParent(), ".docinsight-edit-", ".tmp");
         try {
             Files.writeString(temporary, text, StandardCharsets.UTF_8);
-            Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
-
             DocumentParser.Parsed parsed;
-            try (InputStream input = Files.newInputStream(path)) {
+            try (InputStream input = Files.newInputStream(temporary)) {
                 parsed = parser.parse(document.name(), input);
             }
             List<Chunk> chunks = chunker.chunk(docId, document.name(), parsed.blocks());
             if (chunks.isEmpty()) {
                 throw new IllegalArgumentException("文件内容没有生成有效切片");
             }
-            store.replaceContent(docId, chunks,
-                    Files.size(path), parsed.pages());
-        } catch (IOException | RuntimeException error) {
+            long size = Files.size(temporary);
+
+            // 2. 先提交数据库，成功后再原子替换文件。文件替换失败时把数据库改回旧内容，
+            //    不会出现"文件已改、数据库没改"的永久不一致。
+            store.replaceContent(docId, chunks, size, parsed.pages());
             try {
-                Files.writeString(path, previous, StandardCharsets.UTF_8);
-            } catch (IOException ignored) {
-                // Preserve the original edit error.
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException fileError) {
+                // 数据库已改但文件未改：用旧文件重新解析一遍，恢复索引。
+                try {
+                    DocumentParser.Parsed oldParsed;
+                    try (InputStream input = Files.newInputStream(path)) {
+                        oldParsed = parser.parse(document.name(), input);
+                    }
+                    List<Chunk> oldChunks = chunker.chunk(docId, document.name(), oldParsed.blocks());
+                    if (!oldChunks.isEmpty()) {
+                        store.replaceContent(docId, oldChunks, Files.size(path), oldParsed.pages());
+                    }
+                } catch (Exception rollbackError) {
+                    throw new IOException("文件替换失败且索引回滚失败，请检查原文件", fileError);
+                }
+                throw fileError;
             }
-            throw error;
         } finally {
             Files.deleteIfExists(temporary);
         }
-        // 索引已经提交，此时再取视图失败不应该把文件回滚成旧内容。
         return viewService.view(docId);
     }
 }

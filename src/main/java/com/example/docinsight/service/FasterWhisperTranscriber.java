@@ -384,6 +384,9 @@ public class FasterWhisperTranscriber implements VideoTranscriber {
             try {
                 if (!process.waitFor(3, TimeUnit.SECONDS)) {
                     process.destroyForcibly();
+                    // destroyForcibly 之后必须再 waitFor，否则进程不会被回收，
+                    // 反复超时会在主机上累积僵尸进程。
+                    process.waitFor(2, TimeUnit.SECONDS);
                 }
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();

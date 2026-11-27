@@ -14,6 +14,15 @@ public final class SqliteSchema {
     }
 
     public static void initialize(DataSource dataSource, JdbcTemplate jdbc, int vectorDimension) {
+        initialize(dataSource, jdbc, vectorDimension, "");
+    }
+
+    /**
+     * embeddingModel 是向量空间的指纹。模型变化（即使维度相同）必须重建索引，
+     * 否则旧向量与新向量混在同一空间，检索结果会变成无意义的噪声。
+     */
+    public static void initialize(DataSource dataSource, JdbcTemplate jdbc, int vectorDimension,
+                                   String embeddingModel) {
         if (vectorDimension <= 0 || vectorDimension > 65_536) {
             throw new IllegalArgumentException("EMBEDDING_DIMENSION 必须在 1 到 65536 之间");
         }
@@ -26,7 +35,7 @@ public final class SqliteSchema {
         ensureDocumentSourceColumn(jdbc);
         ensureContentlessFts(jdbc);
         initializeFtsTriggers(jdbc);
-        initializeVectorTable(jdbc, vectorDimension);
+        initializeVectorTable(jdbc, vectorDimension, embeddingModel == null ? "" : embeddingModel);
         jdbc.execute("PRAGMA optimize");
     }
 
@@ -160,24 +169,50 @@ public final class SqliteSchema {
                 """);
     }
 
-    private static void initializeVectorTable(JdbcTemplate jdbc, int vectorDimension) {
+    private static void initializeVectorTable(JdbcTemplate jdbc, int vectorDimension,
+                                              String embeddingModel) {
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS vector_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """);
+        String storedModel = jdbc.query("SELECT value FROM vector_meta WHERE key = 'model'",
+                rs -> rs.next() ? rs.getString(1) : null);
+        String storedDimension = jdbc.query("SELECT value FROM vector_meta WHERE key = 'dimension'",
+                rs -> rs.next() ? rs.getString(1) : null);
         List<String> existing = jdbc.queryForList(
                 "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chunk_vector'",
                 String.class);
-        if (existing.isEmpty()) {
-            jdbc.execute("""
-                    CREATE VIRTUAL TABLE chunk_vector USING vec0(
-                        chunk_key INTEGER PRIMARY KEY,
-                        embedding FLOAT[%d]
-                    )
-                    """.formatted(vectorDimension));
-            return;
+        String expectedDdl = createDdl(vectorDimension);
+        boolean structureMatches = !existing.isEmpty()
+                && existing.get(0) != null
+                && existing.get(0).matches("(?is).*float\\s*\\[\\s*" + vectorDimension + "\\s*\\].*distance_metric\\s*=\\s*['\"]?cosine.*")
+                && existing.get(0).toLowerCase(java.util.Locale.ROOT).contains("document_id");
+        boolean fingerprintMatches = embeddingModel.equals(storedModel)
+                && String.valueOf(vectorDimension).equals(storedDimension);
+
+        if (!structureMatches || !fingerprintMatches) {
+            // 维度、距离度量、分区键或模型指纹任一变化，向量不再可比，整表重建后由
+            // RetrievalService.ensureVectors 懒加载补回。原文与切片不受影响。
+            if (!existing.isEmpty()) {
+                jdbc.execute("DROP TABLE IF EXISTS chunk_vector");
+            }
+            jdbc.execute(expectedDdl);
+            jdbc.update("INSERT OR REPLACE INTO vector_meta(key, value) VALUES ('model', ?)",
+                    embeddingModel);
+            jdbc.update("INSERT OR REPLACE INTO vector_meta(key, value) VALUES ('dimension', ?)",
+                    String.valueOf(vectorDimension));
         }
-        String ddl = existing.get(0);
-        if (ddl == null || !ddl.matches("(?is).*float\\s*\\[\\s*" + vectorDimension + "\\s*\\].*")) {
-            throw new IllegalStateException(
-                    "现有 chunk_vector 维度与 EMBEDDING_DIMENSION=" + vectorDimension
-                            + " 不一致。请恢复原维度，或备份后删除数据文件重新建库。");
-        }
+    }
+
+    private static String createDdl(int vectorDimension) {
+        return """
+                CREATE VIRTUAL TABLE chunk_vector USING vec0(
+                    document_id TEXT PARTITION KEY,
+                    chunk_key INTEGER PRIMARY KEY,
+                    embedding FLOAT[%d] distance_metric=cosine
+                )
+                """.formatted(vectorDimension);
     }
 }

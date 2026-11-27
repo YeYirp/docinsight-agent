@@ -18,7 +18,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -405,6 +407,11 @@ public class DocumentStore {
         return count == null ? 0 : count.intValue();
     }
 
+    public int countVectors() {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM chunk_vector", Long.class);
+        return count == null ? 0 : count.intValue();
+    }
+
     /** 向量写入 chunk_vector，不在 chunk 表或 Java 缓存中保存副本。 */
     @Transactional
     public void updateVectors(List<Chunk> withVectors) {
@@ -421,25 +428,32 @@ public class DocumentStore {
         if (valid.isEmpty()) {
             return;
         }
-        List<Long> chunkKeys = valid.stream().map(chunk -> rowIds.get(chunk.id())).toList();
-        jdbc.update("DELETE FROM chunk_vector WHERE chunk_key IN ("
-                + placeholders(chunkKeys.size()) + ")", chunkKeys.toArray());
-        jdbc.batchUpdate(
-                "INSERT INTO chunk_vector(chunk_key, embedding) VALUES (?, vec_f32(?))",
-                new BatchPreparedStatementSetter() {
-                    @Override
-                    public void setValues(PreparedStatement statement, int index)
-                            throws SQLException {
-                        Chunk chunk = valid.get(index);
-                        statement.setLong(1, rowIds.get(chunk.id()));
-                        statement.setBytes(2, toVectorBlob(chunk.vector()));
-                    }
+        // SQLite 默认变量上限约 32766：一次性 IN 掉几万个 chunk 会抛
+        // "too many SQL variables" 并让整个事务回滚，必须按批拆分。
+        final int batchSize = 400;
+        for (int offset = 0; offset < valid.size(); offset += batchSize) {
+            List<Chunk> batch = valid.subList(offset, Math.min(valid.size(), offset + batchSize));
+            List<Long> chunkKeys = batch.stream().map(chunk -> rowIds.get(chunk.id())).toList();
+            jdbc.update("DELETE FROM chunk_vector WHERE chunk_key IN ("
+                    + placeholders(chunkKeys.size()) + ")", chunkKeys.toArray());
+            jdbc.batchUpdate(
+                    "INSERT INTO chunk_vector(document_id, chunk_key, embedding) VALUES (?, ?, vec_f32(?))",
+                    new BatchPreparedStatementSetter() {
+                        @Override
+                        public void setValues(PreparedStatement statement, int index)
+                                throws SQLException {
+                            Chunk chunk = batch.get(index);
+                            statement.setString(1, chunk.docId());
+                            statement.setLong(2, rowIds.get(chunk.id()));
+                            statement.setBytes(3, toVectorBlob(chunk.vector()));
+                        }
 
-                    @Override
-                    public int getBatchSize() {
-                        return valid.size();
-                    }
-                });
+                        @Override
+                        public int getBatchSize() {
+                            return batch.size();
+                        }
+                    });
+        }
     }
 
     public List<VectorCandidate> vectorCandidates(
@@ -463,13 +477,26 @@ public class DocumentStore {
                 .orElse("");
         int topK = Math.max(1, limit);
         List<String> scope = scopeIds(docIds);
-        List<KeywordCandidate> candidates = toKeywordCandidates(queries.ftsCandidates(
-                terms, ftsQuery, terms.size() * 2.0, terms.size(), scope, topK));
-        // FTS 的分词召回不到内容时退回 LIKE，长句提问才不会空手而归。
-        return candidates.isEmpty()
-                ? toKeywordCandidates(queries.likeCandidates(
-                        terms, terms.size() * 2.0, terms.size(), scope, topK))
-                : candidates;
+        double keywordDivisor = terms.size() * 2.0;
+        // FTS 与 LIKE 必须并查：多词查询里 FTS 只命中一部分词时，单靠 LIKE 才能
+        // 命中的文档不能被丢掉。按 chunk id 合并，分数取较大者。
+        Map<String, KeywordCandidate> merged = new LinkedHashMap<>();
+        for (KeywordCandidate candidate : toKeywordCandidates(queries.ftsCandidates(
+                terms, ftsQuery, keywordDivisor, terms.size(), scope, topK))) {
+            merged.putIfAbsent(candidate.chunk().id(), candidate);
+        }
+        for (KeywordCandidate candidate : toKeywordCandidates(queries.likeCandidates(
+                terms, keywordDivisor, terms.size(), scope, topK))) {
+            merged.merge(candidate.chunk().id(), candidate, (left, right) ->
+                    new KeywordCandidate(left.chunk(),
+                            Math.max(left.keywordScore(), right.keywordScore()),
+                            Math.max(left.headingScore(), right.headingScore())));
+        }
+        return merged.values().stream()
+                .sorted(Comparator.comparingDouble(KeywordCandidate::keywordScore).reversed()
+                        .thenComparing(Comparator.comparingDouble(KeywordCandidate::headingScore).reversed()))
+                .limit(topK)
+                .toList();
     }
 
     private static List<String> scopeIds(Collection<String> docIds) {
@@ -510,11 +537,14 @@ public class DocumentStore {
         }
         List<String> ids = List.copyOf(chunkIds);
         Map<String, Long> result = new HashMap<>(ids.size());
-        jdbc.query("SELECT id, rowid FROM chunk WHERE id IN (" + placeholders(ids.size()) + ")",
-                rs -> {
-                    result.put(rs.getString("id"), rs.getLong("rowid"));
-                },
-                ids.toArray());
+        final int batchSize = 400;
+        for (int offset = 0; offset < ids.size(); offset += batchSize) {
+            List<String> batch = ids.subList(offset, Math.min(ids.size(), offset + batchSize));
+            jdbc.query("SELECT id, rowid FROM chunk WHERE id IN (" + placeholders(batch.size()) + ")",
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                            result.put(rs.getString("id"), rs.getLong("rowid")),
+                    batch.toArray());
+        }
         return result;
     }
 
@@ -565,7 +595,8 @@ public class DocumentStore {
         return String.join(" ", terms);
     }
 
-    private void collectTerms(String source, Set<String> terms) {
+    /** 入库与查询必须共用同一套分词：否则索引里有英文/数字词，查询却永远提取不到。 */
+    public static void collectTerms(String source, Set<String> terms) {
         if (source == null || source.isBlank()) {
             return;
         }

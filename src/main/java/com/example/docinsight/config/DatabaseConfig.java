@@ -53,8 +53,9 @@ public class DatabaseConfig {
     public InitializingBean databaseSchemaInitializer(
             DataSource dataSource,
             JdbcTemplate jdbc,
-            @Value("${app.embedding.dimension:1024}") int vectorDimension) {
-        return () -> SqliteSchema.initialize(dataSource, jdbc, vectorDimension);
+            AiProperties properties) {
+        return () -> SqliteSchema.initialize(dataSource, jdbc,
+                properties.embedding().dimension(), properties.embedding().model());
     }
 
     private Path resolveDatabaseFile(String url) throws IOException {

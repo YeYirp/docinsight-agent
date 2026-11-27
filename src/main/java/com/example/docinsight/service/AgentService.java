@@ -45,6 +45,91 @@ public class AgentService {
 
     private static final Logger log = LoggerFactory.getLogger(AgentService.class);
 
+    static final String NO_HIT_MESSAGE =
+            "没有检索到相关内容。请确认文档是否包含该主题，或换一种说法再问。";
+
+    /**
+     * 流式引用过滤器：[n] 可能跨 delta 拆分，用状态机缓冲完整的方括号片段，
+     * 合法编号原样输出，越界或编造的编号丢弃。其余文本立即透传，不破坏流式体验。
+     */
+    static final class CitationGuard {
+        private final int sourceCount;
+        private final StringBuilder bracket = new StringBuilder();
+        private boolean collecting;
+
+        CitationGuard(int sourceCount) {
+            this.sourceCount = sourceCount;
+        }
+
+        String feed(String text) {
+            if (text == null) {
+                return "";
+            }
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (collecting) {
+                    bracket.append(c);
+                    if (c == ']') {
+                        String token = bracket.toString();
+                        if (isAllowed(token)) {
+                            out.append(token);
+                        }
+                        bracket.setLength(0);
+                        collecting = false;
+                    } else if (bracket.length() > 8) {
+                        // 不是引用语法，原样放行，避免无限缓冲。
+                        out.append(bracket);
+                        bracket.setLength(0);
+                        collecting = false;
+                    }
+                } else if (c == '[') {
+                    collecting = true;
+                    bracket.setLength(0);
+                    bracket.append(c);
+                } else {
+                    out.append(c);
+                }
+            }
+            return out.toString();
+        }
+
+        private boolean isAllowed(String token) {
+            String body = token.substring(1, token.length() - 1).trim();
+            try {
+                int n = Integer.parseInt(body);
+                return n >= 1 && n <= sourceCount;
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+    }
+
+    /** 回答里 [n] 只允许引用实际存在的来源，模型编造的编号直接剔除。 */
+    static String sanitizeCitations(String text, int sourceCount) {
+        if (text == null) {
+            return "";
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\[([^\\]]*)\\]").matcher(text);
+        StringBuilder sb = new StringBuilder();
+        int last = 0;
+        while (matcher.find()) {
+            sb.append(text, last, matcher.start());
+            int number;
+            try {
+                number = Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException ignored) {
+                number = -1;
+            }
+            if (number >= 1 && number <= sourceCount) {
+                sb.append(matcher.group());
+            }
+            last = matcher.end();
+        }
+        sb.append(text.substring(last));
+        return sb.toString();
+    }
+
     private static final String SYSTEM_PROMPT = """
             你是企业文档问答助手。规则：
             1. 只依据给定的资料回答，资料中没有的信息明确说"文档中未提及"；
@@ -93,15 +178,25 @@ public class AgentService {
 
     public SseEmitter ask(AskInput input) {
         SseEmitter emitter = new SseEmitter(180_000L);
-        emitter.onTimeout(emitter::complete);
-        executor.submit(() -> run(input, emitter));
+        java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        emitter.onTimeout(() -> {
+            cancelled.set(true);
+            emitter.complete();
+        });
+        emitter.onCompletion(() -> cancelled.set(true));
+        emitter.onError(error -> cancelled.set(true));
+        executor.submit(() -> run(input, emitter, cancelled));
         return emitter;
     }
 
-    private void run(AskInput input, SseEmitter emitter) {
+    private void run(AskInput input, SseEmitter emitter,
+                     java.util.concurrent.atomic.AtomicBoolean cancelled) {
         long started = System.currentTimeMillis();
         metrics.request();
         try {
+            if (cancelled.get()) {
+                return;
+            }
             Set<String> scopedDocIds = scopedDocumentIds(input);
             List<Chunk> scopedChunks = store.chunksForDocuments(scopedDocIds);
             if (scopedChunks.isEmpty()) {
@@ -135,10 +230,15 @@ public class AgentService {
             send(emitter, "sources", sources);
 
             stage(emitter, "生成回答", "依据资料组织答案");
-            if (llmReady()) {
-                llmAnswer(input.question(), hits, emitter);
+            if (hits.isEmpty()) {
+                // 两条路径统一：没有命中就固定文案，不能让 LLM 凭参数知识作答。
+                stream(emitter, NO_HIT_MESSAGE, cancelled);
+            } else if (cancelled.get()) {
+                return;
+            } else if (llmReady()) {
+                llmAnswer(input.question(), hits, emitter, cancelled);
             } else {
-                extractiveAnswer(hits, emitter);
+                extractiveAnswer(hits, emitter, cancelled);
             }
 
             metrics.latency(System.currentTimeMillis() - started);
@@ -170,7 +270,8 @@ public class AgentService {
         return null;
     }
 
-    private void llmAnswer(String question, List<RetrievalService.Hit> hits, SseEmitter emitter)
+    private void llmAnswer(String question, List<RetrievalService.Hit> hits, SseEmitter emitter,
+                           java.util.concurrent.atomic.AtomicBoolean cancelled)
             throws Exception {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         StreamingChatModel streaming = streamingProvider.getIfAvailable();
@@ -182,11 +283,18 @@ public class AgentService {
         messages = toolLoop(chatModel, messages, emitter);
 
         CompletableFuture<ChatResponse> future = new CompletableFuture<>();
+        CitationGuard citations = new CitationGuard(hits.size());
         streaming.chat(ChatRequest.builder().messages(messages).build(),
                 new StreamingChatResponseHandler() {
                     @Override
                     public void onPartialResponse(String partial) {
-                        send(emitter, "delta", Map.of("text", partial));
+                        if (cancelled.get()) {
+                            return;
+                        }
+                        String safe = citations.feed(partial);
+                        if (!safe.isEmpty()) {
+                            send(emitter, "delta", Map.of("text", safe));
+                        }
                     }
 
                     @Override
@@ -200,9 +308,15 @@ public class AgentService {
                     }
                 });
 
-        ChatResponse response = future.get(props.ai().timeoutSeconds(), TimeUnit.SECONDS);
-        if (response.tokenUsage() != null) {
-            metrics.tokens(response.tokenUsage().inputTokenCount(), response.tokenUsage().outputTokenCount());
+        try {
+            ChatResponse response = future.get(props.ai().timeoutSeconds(), TimeUnit.SECONDS);
+            if (response.tokenUsage() != null) {
+                metrics.tokens(response.tokenUsage().inputTokenCount(), response.tokenUsage().outputTokenCount());
+            }
+        } catch (java.util.concurrent.TimeoutException timeout) {
+            // 超时后必须取消底层调用，否则 HTTP 连接与计费不会停止。
+            future.cancel(true);
+            throw timeout;
         }
     }
 
@@ -241,10 +355,11 @@ public class AgentService {
     }
 
     /** 没有配置模型时，用检索结果拼一个抽取式回答，保证链路可演示。 */
-    private void extractiveAnswer(List<RetrievalService.Hit> hits, SseEmitter emitter)
+    private void extractiveAnswer(List<RetrievalService.Hit> hits, SseEmitter emitter,
+                                  java.util.concurrent.atomic.AtomicBoolean cancelled)
             throws InterruptedException {
         if (hits.isEmpty()) {
-            stream(emitter, "没有检索到相关内容。请确认文档是否包含该主题，或换一种说法再问。");
+            stream(emitter, NO_HIT_MESSAGE, cancelled);
             return;
         }
         StringBuilder sb = new StringBuilder("根据文档，可以这样理解：\n\n");
@@ -261,11 +376,16 @@ public class AgentService {
                     .append("（").append(chunk.location()).append("）\n");
         }
         sb.append("\n（当前未配置模型 key，以上为原文摘录。）");
-        stream(emitter, sb.toString());
+        stream(emitter, sb.toString(), cancelled);
     }
 
-    private void stream(SseEmitter emitter, String text) throws InterruptedException {
+    private void stream(SseEmitter emitter, String text,
+                        java.util.concurrent.atomic.AtomicBoolean cancelled)
+            throws InterruptedException {
         for (int i = 0; i < text.length(); i += 12) {
+            if (cancelled != null && cancelled.get()) {
+                return;
+            }
             send(emitter, "delta", Map.of("text", text.substring(i, Math.min(text.length(), i + 12))));
             Thread.sleep(18);
         }
@@ -285,25 +405,10 @@ public class AgentService {
         return sb.toString();
     }
 
-    /** 领域词 + 二字片段，够用且不引入分词依赖。 */
-    private Set<String> keywords(String question) {
+    /** 与入库共用同一分词：保留英文、数字与全部中文片段，不再截断到 6 个。 */
+    static Set<String> keywords(String question) {
         Set<String> keywords = new LinkedHashSet<>();
-        String[] domain = {"备份", "权限", "告警", "部署", "安装", "账号", "设备", "恢复",
-                "日志", "接口", "配置", "升级", "故障", "排查"};
-        for (String word : domain) {
-            if (question.contains(word)) {
-                keywords.add(word);
-            }
-        }
-        // 再补问题里的二字片段，避免只靠领域词导致相近章节分不开
-        if (keywords.size() < 6) {
-            for (int i = 0; i + 2 <= question.length() && keywords.size() < 6; i++) {
-                String gram = question.substring(i, i + 2);
-                if (gram.matches("[\\u4e00-\\u9fa5]{2}")) {
-                    keywords.add(gram);
-                }
-            }
-        }
+        DocumentStore.collectTerms(question == null ? "" : question, keywords);
         return keywords;
     }
 

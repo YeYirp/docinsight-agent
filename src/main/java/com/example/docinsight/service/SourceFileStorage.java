@@ -24,10 +24,21 @@ public class SourceFileStorage {
     private static final String GLOBAL_DIRECTORY = "未归属知识库";
 
     private final Path root;
+    private final boolean allowOutsideRoot;
 
     public SourceFileStorage(
-            @Value("${app.storage.sourcefiles-dir:./data/sourcefiles}") String rootDirectory) {
+            @Value("${app.storage.sourcefiles-dir:./data/sourcefiles}") String rootDirectory,
+            @Value("${app.storage.allow-outside-root:false}") boolean allowOutsideRoot) {
         this.root = Path.of(rootDirectory).toAbsolutePath().normalize();
+        this.allowOutsideRoot = allowOutsideRoot;
+    }
+
+    private boolean withinRoot(Path target) {
+        return allowOutsideRoot || (target.startsWith(root) && !target.equals(root));
+    }
+
+    public boolean allowsOutsideRoot() {
+        return allowOutsideRoot;
     }
 
     public String rootPath() {
@@ -42,14 +53,22 @@ public class SourceFileStorage {
         String value = directory == null || directory.isBlank()
                 ? GLOBAL_DIRECTORY : directory;
         Path raw = Path.of(value);
-        return raw.isAbsolute() ? raw.normalize() : root.resolve(raw).normalize();
+        Path target = (raw.isAbsolute() ? raw : root.resolve(raw)).normalize();
+        if (!withinRoot(target)) {
+            throw new IllegalArgumentException("目录必须位于原文件根目录内");
+        }
+        return target;
     }
 
     public String storageReference(Path directory) {
         Path normalized = directory.toAbsolutePath().normalize();
-        return normalized.startsWith(root)
-                ? root.relativize(normalized).toString()
-                : normalized.toString();
+        if (withinRoot(normalized) && !normalized.equals(root) && normalized.startsWith(root)) {
+            return root.relativize(normalized).toString();
+        }
+        if (!withinRoot(normalized)) {
+            throw new IllegalArgumentException("目录必须位于原文件根目录内");
+        }
+        return normalized.toString();
     }
 
     public boolean isDefaultDirectory(String reference, String knowledgeBaseName) {
@@ -120,10 +139,8 @@ public class SourceFileStorage {
             return root;
         }
         Path raw = Path.of(relativePath);
-        Path target = raw.isAbsolute()
-                ? raw.normalize()
-                : root.resolve(raw).normalize();
-        if (!raw.isAbsolute() && !target.startsWith(root)) {
+        Path target = (raw.isAbsolute() ? raw : root.resolve(raw)).normalize();
+        if (!withinRoot(target)) {
             throw new IllegalArgumentException("非法的原文件路径");
         }
         return target;
@@ -166,8 +183,9 @@ public class SourceFileStorage {
                     Files.createDirectories(oldPath.getParent());
                     Files.move(current, oldPath, StandardCopyOption.REPLACE_EXISTING);
                 }
-            } catch (IOException ignored) {
-                // Best-effort rollback after a database error.
+            } catch (IOException error) {
+                org.slf4j.LoggerFactory.getLogger(SourceFileStorage.class)
+                        .warn("文件回滚失败 path={} error={}", newPath, error.getMessage());
             }
         });
     }
@@ -214,8 +232,11 @@ public class SourceFileStorage {
                     }
                 }
             }
-        } catch (IOException ignored) {
-            // Cleanup must not block database changes.
+        } catch (IOException error) {
+            // 清理失败不能阻断数据库删除，但必须留痕：否则用户以为文件已删，
+            // 实际留下孤儿文件长期占空间。
+            org.slf4j.LoggerFactory.getLogger(SourceFileStorage.class)
+                    .warn("源文件删除失败 path={} error={}", relativePath, error.getMessage());
         }
     }
 

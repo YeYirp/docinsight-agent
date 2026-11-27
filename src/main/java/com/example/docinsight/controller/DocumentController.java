@@ -105,6 +105,8 @@ public class DocumentController {
 
     @DeleteMapping("/{docId}")
     public Map<String, Object> delete(@PathVariable String docId) {
+        // 先立墓碑：视频任务可能还在后台跑且尚未入库，否则删除后会被任务重新写回。
+        videoJobs.markDeleted(docId);
         String mediaPath = store.mediaPath(docId);
         String sourcePath = store.sourcePath(docId);
         store.remove(docId);

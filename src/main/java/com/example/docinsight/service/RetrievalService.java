@@ -59,34 +59,30 @@ public class RetrievalService {
         List<DocumentStore.KeywordCandidate> keywordHits =
                 store.keywordCandidates(keywords, docIds, limit);
 
-        boolean semanticUsed = !vectorHits.isEmpty();
+        // RRF（倒数排名融合）：语义分与关键词分处在不同量纲，直接加权会让
+        // 任一通道的分数分布变化就改变整体排序。RRF 只看名次，稳定得多。
+        final int rrfConstant = 60;
         Map<String, Chunk> chunks = new HashMap<>();
-        Map<String, Double> semanticScores = new HashMap<>();
-        Map<String, Double> keywordScores = new HashMap<>();
-        Map<String, Double> headingScores = new HashMap<>();
+        Map<String, Double> rrf = new HashMap<>();
+        Map<String, Boolean> semanticFlags = new HashMap<>();
 
-        for (DocumentStore.VectorCandidate hit : vectorHits) {
-            Chunk chunk = hit.chunk();
+        for (int rank = 0; rank < vectorHits.size(); rank++) {
+            Chunk chunk = vectorHits.get(rank).chunk();
             chunks.putIfAbsent(chunk.id(), chunk);
-            double similarity = Math.max(0, Math.min(1, 1.0 - hit.distance()));
-            semanticScores.merge(chunk.id(), similarity, Math::max);
+            rrf.merge(chunk.id(), 1.0 / (rrfConstant + rank + 1), Double::sum);
+            semanticFlags.merge(chunk.id(), true, (a, b) -> a || b);
         }
-        for (DocumentStore.KeywordCandidate hit : keywordHits) {
-            Chunk chunk = hit.chunk();
+        for (int rank = 0; rank < keywordHits.size(); rank++) {
+            Chunk chunk = keywordHits.get(rank).chunk();
             chunks.putIfAbsent(chunk.id(), chunk);
-            keywordScores.merge(chunk.id(), hit.keywordScore(), Math::max);
-            headingScores.merge(chunk.id(), hit.headingScore(), Math::max);
+            rrf.merge(chunk.id(), 1.0 / (rrfConstant + rank + 1), Double::sum);
         }
 
         List<Hit> hits = new ArrayList<>(chunks.size());
         for (Chunk chunk : chunks.values()) {
-            double semantic = semanticScores.getOrDefault(chunk.id(), 0.0);
-            double keyword = keywordScores.getOrDefault(chunk.id(), 0.0);
-            double heading = headingScores.getOrDefault(chunk.id(), 0.0);
-            double score = semanticUsed
-                    ? semantic * 0.6 + keyword * 0.25 + heading * 0.15
-                    : keyword * 0.7 + heading * 0.3;
-            hits.add(new Hit(chunk, score, semanticUsed));
+            double score = rrf.getOrDefault(chunk.id(), 0.0);
+            hits.add(new Hit(chunk, score,
+                    Boolean.TRUE.equals(semanticFlags.get(chunk.id()))));
         }
         return hits.stream()
                 .sorted(Comparator.comparingDouble(Hit::score).reversed()
@@ -95,17 +91,24 @@ public class RetrievalService {
                 .toList();
     }
 
+    /** 单元测试可见：RRF 分数只依赖名次，不受两路分数量纲影响。 */
+    static double rrfScore(int rank) {
+        return 1.0 / (60.0 + rank);
+    }
+
     /** 缺失向量从 SQL 查询出来并写回 chunk_vector；进程内不保留任何向量缓存。 */
     private void ensureVectors(Collection<String> docIds) {
         int batchSize = Math.max(1, props.embedding().batchSize());
         int indexed = 0;
-        while (true) {
+        int maxBatches = Math.max(1, 100_000 / batchSize);
+        for (int batchCount = 0; batchCount < maxBatches; batchCount++) {
             List<Chunk> pending = store.chunksWithoutVectors(docIds, batchSize);
             if (pending.isEmpty()) {
                 break;
             }
+            // 标题与正文一起编码：用户按章节标题提问时向量侧也能命中。
             List<double[]> vectors = embeddingClient.embed(
-                    pending.stream().map(Chunk::text).toList());
+                    pending.stream().map(RetrievalService::embeddingText).toList());
             if (vectors == null || vectors.size() != pending.size()) {
                 log.warn("vector_index_failed chunks={} fallback=keyword_only", pending.size());
                 return;
@@ -114,8 +117,15 @@ public class RetrievalService {
             for (int index = 0; index < pending.size(); index++) {
                 withVectors.add(pending.get(index).withVector(vectors.get(index)));
             }
+            int before = store.countVectors();
             store.updateVectors(withVectors);
+            int after = store.countVectors();
             indexed += withVectors.size();
+            // 并发删除可能让本批全部写不进去；此时继续循环只会无限重试同一个批次。
+            if (after <= before) {
+                log.warn("vector_index_no_progress chunks={} fallback=keyword_only", pending.size());
+                return;
+            }
             if (pending.size() < batchSize) {
                 break;
             }
@@ -123,6 +133,12 @@ public class RetrievalService {
         if (indexed > 0) {
             log.info("vector_index_ready chunks={}", indexed);
         }
+    }
+
+    /** 标题 + 正文，与 FTS 的 search_terms 保持一致，让两路召回能力对称。 */
+    static String embeddingText(Chunk chunk) {
+        String heading = chunk.heading() == null ? "" : chunk.heading().trim();
+        return heading.isEmpty() ? chunk.text() : heading + "\n" + chunk.text();
     }
 
     private double[] embedOne(String question) {

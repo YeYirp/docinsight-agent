@@ -1,5 +1,7 @@
 server:
   port: ${SERVER_PORT:8080}
+  # 单机工具默认只监听本机；要给别人访问再显式设 0.0.0.0 并配置 API_TOKEN。
+  address: ${SERVER_ADDRESS:127.0.0.1}
   compression:
     enabled: true
     min-response-size: 1024
@@ -23,6 +25,7 @@ spring:
           must-revalidate: true
   servlet:
     multipart:
+      # 必须覆盖视频上限：否则文档上限调小后视频上传会在解析阶段就被拦截。
       max-file-size: ${MAX_UPLOAD_SIZE:512MB}
       max-request-size: ${MAX_UPLOAD_SIZE:512MB}
   mvc:
@@ -30,6 +33,10 @@ spring:
       request-timeout: 180000
 
 app:
+  security:
+    # 留空不启用鉴权（仅本机访问）；设置后 /api/** 必须带 Authorization: Bearer <token>。
+    api-token: ${API_TOKEN:}
+
   ai:
     base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
     api-key: ${LLM_API_KEY:}
@@ -50,10 +57,13 @@ app:
     pool-size: ${DB_POOL_SIZE:4}
 
   documents:
+    max-file-size: ${DOCUMENT_MAX_SIZE:50MB}
     legacy-storage-dir: ${DOCUMENT_LEGACY_STORAGE_DIR:./data/documents}
 
   storage:
     sourcefiles-dir: ${SOURCEFILES_ROOT:./data/sourcefiles}
+    # 默认为 false：目录浏览与 sourcePath 只能在 sourcefiles 根内。
+    allow-outside-root: ${ALLOW_OUTSIDE_ROOT:false}
 
   video:
     enabled: ${VIDEO_ENABLED:true}
